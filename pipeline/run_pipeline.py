@@ -28,21 +28,19 @@ from pipeline.nop.nop_plot import plot_nop
 from pipeline.ML.ml_features import extract_ml_features
 
 def save_uploaded_video(uploaded_file) -> str:
-    """
-    Save Streamlit uploaded file to temp/ and return path.
-    This file is ONLY used as the raw input for DLC / rendering.
-    """
-    os.makedirs("temp", exist_ok=True)
+    import shutil
 
-    suffix = Path(uploaded_file.name).suffix.lower()
-    if suffix not in [".mp4", ".avi", ".mov", ".mkv"]:
-        suffix = ".mp4"
+    dlc_video_dir = r"C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\videos"
+    os.makedirs(dlc_video_dir, exist_ok=True)
 
-    out_path = os.path.join("temp", f"input_{uuid.uuid4().hex}{suffix}")
-    with open(out_path, "wb") as f:
+    video_name = uploaded_file.name
+    dlc_video_path = os.path.join(dlc_video_dir, video_name)
+
+    with open(dlc_video_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
-    return out_path
+    return dlc_video_path
+
 
 
 def run_full_pipeline(
@@ -177,6 +175,7 @@ def run_full_pipeline(
 
 
     return {
+        "input_video": input_video,
         "out_video": out_video,
         "logs": logs,
         "speed_plot": speed_plot,

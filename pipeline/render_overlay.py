@@ -53,6 +53,9 @@ def render_annotated_video(
     
     sp_x = get_xy("spineUpper", "x")
     sp_y = get_xy("spineUpper", "y")
+
+    spM_x_arr = get_xy("spineMid", "x")
+    spM_y_arr = get_xy("spineMid", "y")
     
     spL_x_arr = get_xy("spineLower", "x")
     spL_y_arr = get_xy("spineLower", "y")
@@ -115,6 +118,7 @@ def render_annotated_video(
         lx, ly = int(le_x[i]), int(le_y[i])
         rx, ry = int(re_x[i]), int(re_y[i])
         sx, sy = int(sp_x[i]), int(sp_y[i])
+        spMx, spMy = int(spM_x_arr[i]), int(spM_y_arr[i])
         spL_x, spL_y = int(spL_x_arr[i]), int(spL_y_arr[i])
         lShoulder_x, lShoulder_y   = int(lShoulder_x_arr[i]), int(lShoulder_y_arr[i])
         rShoulder_x, rShoulder_y   = int(rShoulder_x_arr[i]), int(rShoulder_y_arr[i])
@@ -133,10 +137,10 @@ def render_annotated_video(
         xs = [nx, lx, rx, sx, spL_x, lShoulder_x, rShoulder_x, lWrist_x, rWrist_x, tailBase_x]
         ys = [ny, ly, ry, sy, spL_y, lShoulder_y, rShoulder_y, lWrist_y, rWrist_y, tailBase_y]
         """
-        for (x, y) in [(nx, ny), (lx, ly), (rx, ry), (sx, sy), (spL_x, spL_y), (lShoulder_x, lShoulder_y), (rShoulder_x, rShoulder_y), (tailBase_x, tailBase_y)]:
+        for (x, y) in [(nx, ny), (lx, ly), (rx, ry), (sx, sy), (spMx, spMy), (spL_x, spL_y), (lShoulder_x, lShoulder_y), (rShoulder_x, rShoulder_y), (tailBase_x, tailBase_y)]:
             cv2.circle(frame, (x, y), 4, (0, 0, 255), -1)
-        xs = [nx, lx, rx, sx, spL_x, lShoulder_x, rShoulder_x, tailBase_x]
-        ys = [ny, ly, ry, sy, spL_y, lShoulder_y, rShoulder_y, tailBase_y]
+        xs = [nx, lx, rx, sx, spMx, spL_x, lShoulder_x, rShoulder_x, tailBase_x]
+        ys = [ny, ly, ry, sy, spMy, spL_y, lShoulder_y, rShoulder_y, tailBase_y]
 
         pad = 15
         xmin = max(min(xs) - pad, 0)

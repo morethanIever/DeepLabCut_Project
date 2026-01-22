@@ -24,7 +24,7 @@ def run_deeplabcut_pose(video_path: str,
     logs.append("[POSE] No cache found. Running DeepLabCut (slow)...")
     
     # TODO: change this to YOUR config.yaml path
-    CONFIG_PATH = r""
+    CONFIG_PATH = r"C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\config.yaml"
 
     try:
         import deeplabcut
@@ -32,8 +32,17 @@ def run_deeplabcut_pose(video_path: str,
         raise RuntimeError(f"DeepLabCut import failed. Is it installed in this env? {e}")
 
     logs.append("[DLC] analyze_videos started...")
-    deeplabcut.analyze_videos(CONFIG_PATH, [video_path], save_as_csv=True)
-
+    cwd = os.getcwd()
+    try:
+        os.chdir(os.path.dirname(video_path))
+        deeplabcut.analyze_videos(
+            CONFIG_PATH,
+            [video_path],
+            save_as_csv=True,
+            batchsize=16
+        )
+    finally:
+        os.chdir(cwd)
     # Optional: filter predictions (helps jitter)
     try:
         logs.append("[DLC] filterpredictions started...")
