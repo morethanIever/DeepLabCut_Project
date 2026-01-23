@@ -93,7 +93,7 @@ if uploaded is not None:
 # Analyze button
 # ----------------------------
 if uploaded is not None and st.button("Analyze Video", type="primary"):
-    os.makedirs("temp", exist_ok=True)
+    #os.makedirs("temp", exist_ok=True)
 
     logs = []
 

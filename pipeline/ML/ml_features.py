@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 from pipeline.cache_utils import ensure_dirs, cached_ml_features
-
+from pipeline.ML.umap_plot import apply_umap
 # -----------------------------------
 # Feature extraction
 # -----------------------------------
@@ -56,14 +56,27 @@ def extract_ml_features(kin_csv: str, video_path: str, *, force=False) -> str:
             df["spine_y"] - df["spine_lower_y"],
         ),
         "head_spine_angle": df["head_spine_angle_deg"],
-        "vel_std": df["speed_px_s"].rolling(window=30, center=True).std(),
-        "angle_std": df["head_spine_angle_deg"].rolling(window=30, center=True).std().fillna(0),
+        "vel_std": df["speed_px_s"].rolling(window=15, center=True).std(),
+        "angle_std": df["head_spine_angle_deg"].rolling(window=15, center=True).std().fillna(0),
     })
 
     # temporal smoothing
-    feats = feats.rolling(5, center=True).mean().fillna(0)
+    feats = feats.rolling(15, center=True).mean().fillna(0)
 
-    feats.to_csv(out_path, index=False)
+    lags = 10
+    final_feats = feats.copy()
+    for col in feats.columns:
+        for i in range(1, lags + 1):
+            final_feats[f'{col}_lag_{i}'] = feats[col].shift(i)
+    final_feats = final_feats.copy().fillna(0)
+
+    print("[ML] Computing UMAP for visualization...")
+    umap_coords = apply_umap(final_feats)
+    
+    # Combine original features with UMAP coordinates   
+    final_df = pd.concat([feats, umap_coords], axis=1)
+
+    final_df.to_csv(out_path, index=False)
     print(f"[ML] Features saved to {out_path}")
 
     return out_path

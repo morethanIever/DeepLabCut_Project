@@ -2,7 +2,7 @@
 import os
 import uuid
 from pathlib import Path
-
+import pandas as pd
 from pipeline.pose_dlc import run_deeplabcut_pose
 from pipeline.kinematics.kinematics import compute_kinematics
 from pipeline.behavior import classify_behavior
@@ -26,6 +26,7 @@ from pipeline.nop.nop_plot import plot_nop
 #from pipeline.nop.nop_time_binned_short_plot import plot_nop_time_binned_short
 
 from pipeline.ML.ml_features import extract_ml_features
+from pipeline.ML.umap_plot import save_umap_plot
 
 def save_uploaded_video(uploaded_file) -> str:
     import shutil
@@ -117,19 +118,7 @@ def run_full_pipeline(
     )
     logs.append(f"[NOP] Summary CSV saved: {nop_summary_csv}")
     
-    """
-    video_duration = len(pd.read_csv(kin_csv)) / 30
-    if video_duration < 30:
-        nop_binned_csv = run_nop_time_binned_short(
-            kin_csv,
-            out_dir = "output/nop"
-        )
-        nop_plot = plot_nop_time_binned_short(nop_binned_csv)
-    else:
-        nop_binned_csv = run_nop_time_binned_short(kin_csv)
-    logs.append(f"[NOP] Time-binned CSV saved: {nop_binned_csv}")
-    """
-    
+
     nop_plot_path = plot_nop(
         kin_csv=kin_csv,
         nop_summary_csv=nop_summary_csv,
@@ -141,23 +130,59 @@ def run_full_pipeline(
     # ----------------------------
     # 4) Render annotated video
     # ----------------------------
-    out_video = cached_outvideo_path(input_video)
-
-    render_annotated_video(
-        input_video=input_video,
-        pose_csv=pose_csv,
-        kin_csv=kin_csv,
-        beh_csv=beh_csv,
-        logs=logs,
-        out_path=out_video,
-    )
-    
     ml_feat_csv = extract_ml_features(
         kin_csv,
         input_video,
         force=force_analysis
     )
+    df_ml = pd.read_csv(ml_feat_csv)
+    if not df_ml.empty:
+        umap_path = save_umap_plot(
+            df_ml, 
+            input_video, 
+            output_dir="outputs/plots/ml",
+            color_col=None 
+        )
     
+    logs.append(f"[PLOT] Unsupervised UMAP map saved: {umap_path}")
+    
+    umap_plot_path, cluster_labels = save_umap_plot(df_ml, input_video)
+
+    df_ml['visual_cluster'] = cluster_labels
+    df_ml.to_csv(ml_feat_csv, index=False)
+
+    logs.append(f"[OK] Behavioral clusters saved to: {ml_feat_csv}")
+    out_video = cached_outvideo_path(input_video)
+
+    ALL_VIDEO_MAPS = {
+        'fad92c0398211bcb9c0ef182e0fe65cb': {0: 'Fast move', 1: 'Slow Sniffing', 2: 'Move', 3: 'Rest', 4: 'Grooming', 5: 'Active Sniffing', 6: 'Turning', 7: 'Rearing'},
+        'bf57b37b35cd86006f143dbf36d41402': {0: 'Move', 1: 'Grooming', 2: 'Turning', 3: 'Rearing', 4: 'Fast Move', 5: 'Sniffing', 6: 'Fast Move', 7: 'Rest'},
+        'e8c9ec435e1183ddfd78181e05ecfac1': {0: 'Rest', 1: 'Turning', 2: 'Sniffing', 3: 'Rearing', 4: 'Grooming', 5: 'Fast Move', 6: 'Move', 7: 'Fast Move'},
+        '0abdd7ba277898156608d9b842e97d68': {0: 'Sniffing', 1: 'Grooming', 2: 'Fast move', 3: 'Turning', 4: 'Rest', 5: 'Rearing', 6: 'Move', 7: 'Grooming'}
+    }
+
+    # 5) Determine which map to use based on input video name
+    video_id = Path(input_video).stem # Extracts the filename without extension
+    video_id = video_id.split('_')[0]
+    current_map = ALL_VIDEO_MAPS.get(video_id, None)
+
+    if current_map:
+        logs.append(f"[RENDER] Found verified map for {video_id}")
+    else:
+        logs.append(f"[WARNING] No verified map found for {video_id}. Showing raw Cluster IDs.")
+    
+    render_annotated_video(
+        input_video=input_video,
+        pose_csv=pose_csv,
+        kin_csv=kin_csv,
+        beh_csv=beh_csv,
+        ml_feat_csv=ml_feat_csv,
+        logs=logs,
+        out_path=out_video,
+        label_map=current_map
+    )
+
+
     speed_plot = plot_speed(kin_csv)
     trajectory_plot = plot_trajectory(kin_csv)
     trajectory_behavior = plot_trajectory_by_behavior(kin_csv, beh_csv)
@@ -185,4 +210,5 @@ def run_full_pipeline(
         "trajectory_turning_plot": trajectory_turning_plot,
         "nop_plot": nop_plot,
         "ml_features": ml_feat_csv,
+        "umap_plot": umap_path
     }

@@ -1,18 +1,18 @@
-# pipeline/render_overlay.py
 import os
 import cv2
 import pandas as pd
 import numpy as np
-
 
 def render_annotated_video(
     input_video: str,
     pose_csv: str,
     kin_csv: str,
     beh_csv: str,
+    ml_feat_csv: str,
     logs: list,
     *,
     out_path: str,
+    label_map=None
 ) -> str:
     """
     Render annotated video (bbox, head direction, speed, behavior).
@@ -23,9 +23,11 @@ def render_annotated_video(
     # ----------------------------
     # Load data
     # ----------------------------
+    # DLC CSVs usually have a 3-level multi-index header
     pose = pd.read_csv(pose_csv, header=[0, 1, 2])
     kin = pd.read_csv(kin_csv)
     beh = pd.read_csv(beh_csv)
+    ml_feat = pd.read_csv(ml_feat_csv)
 
     # ----------------------------
     # Helper: safe keypoint access
@@ -43,38 +45,26 @@ def render_annotated_video(
             )
         return cols.iloc[:, 0].to_numpy()
 
-    # Adjust names to your DLC project
+    # Keypoints for Bounding Box and Arrows
     nose_x = get_xy("nose", "x")
     nose_y = get_xy("nose", "y")
     le_x = get_xy("leftEar", "x")
     le_y = get_xy("leftEar", "y")
     re_x = get_xy("rightEar", "x")
     re_y = get_xy("rightEar", "y")
-    
     sp_x = get_xy("spineUpper", "x")
     sp_y = get_xy("spineUpper", "y")
+    spMx = get_xy("spineMid", "x")
+    spMy = get_xy("spineMid", "y")
+    spLx = get_xy("spineLower", "x")
+    spLy = get_xy("spineLower", "y")
+    ls_x = get_xy("leftShoulder", "x")
+    ls_y = get_xy("leftShoulder", "y")
+    rs_x = get_xy("rightShoulder", "x")
+    rs_y = get_xy("rightShoulder", "y")
+    tb_x = get_xy("tailBase", "x")
+    tb_y = get_xy("tailBase", "y")
 
-    spM_x_arr = get_xy("spineMid", "x")
-    spM_y_arr = get_xy("spineMid", "y")
-    
-    spL_x_arr = get_xy("spineLower", "x")
-    spL_y_arr = get_xy("spineLower", "y")
-
-    lShoulder_x_arr = get_xy("leftShoulder", "x")
-    lShoulder_y_arr = get_xy("leftShoulder", "y")
-
-    rShoulder_x_arr = get_xy("rightShoulder", "x")
-    rShoulder_y_arr = get_xy("rightShoulder", "y")
-    """
-    lWrist_x_arr = get_xy("leftWrist", "x")
-    lWrist_y_arr = get_xy("leftWrist", "y")
-
-    rWrist_x_arr = get_xy("rightWrist", "x")
-    rWrist_y_arr = get_xy("rightWrist", "y")
-    """
-
-    tailBase_x_arr = get_xy("tailBase", "x")
-    tailBase_y_arr = get_xy("tailBase", "y")
     # ----------------------------
     # Video IO
     # ----------------------------
@@ -93,7 +83,7 @@ def render_annotated_video(
     out = cv2.VideoWriter(out_path, fourcc, fps, (w, h))
 
     # ----------------------------
-    # Frame alignment (VERY IMPORTANT)
+    # Frame alignment
     # ----------------------------
     n_video = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     n_pose = len(nose_x)
@@ -103,7 +93,7 @@ def render_annotated_video(
 
     logs.append(
         f"[RENDER] Frames video={n_video}, pose={n_pose}, "
-        f"kin={n_kin}, beh={n_beh} → using {max_frames}"
+        f"kin={n_kin}, beh={n_beh} → processing {max_frames} frames"
     )
 
     # ----------------------------
@@ -114,79 +104,59 @@ def render_annotated_video(
         if not ret:
             break
 
-        nx, ny = int(nose_x[i]), int(nose_y[i])
-        lx, ly = int(le_x[i]), int(le_y[i])
-        rx, ry = int(re_x[i]), int(re_y[i])
-        sx, sy = int(sp_x[i]), int(sp_y[i])
-        spMx, spMy = int(spM_x_arr[i]), int(spM_y_arr[i])
-        spL_x, spL_y = int(spL_x_arr[i]), int(spL_y_arr[i])
-        lShoulder_x, lShoulder_y   = int(lShoulder_x_arr[i]), int(lShoulder_y_arr[i])
-        rShoulder_x, rShoulder_y   = int(rShoulder_x_arr[i]), int(rShoulder_y_arr[i])
-        """
-        lWrist_x, lWrist_y   = int(lWrist_x_arr[i]), int(lWrist_y_arr[i])
-        rWrist_x, rWrist_y   = int(rWrist_x_arr[i]), int(rWrist_y_arr[i])
-        """
-        tailBase_x, tailBase_y   = int(tailBase_x_arr[i]), int(tailBase_y_arr[i])
-        """
-        # draw keypoints
-        for (x, y) in [(nx, ny), (lx, ly), (rx, ry), (sx, sy), (spL_x, spL_y), (lShoulder_x, lShoulder_y), (rShoulder_x, rShoulder_y), (lWrist_x, lWrist_y), (rWrist_x, rWrist_y), (tailBase_x, tailBase_y)]:
-            cv2.circle(frame, (x, y), 4, (0, 0, 255), -1)
+        # Extract current coordinates
+        pts = {
+            "nose": (int(nose_x[i]), int(nose_y[i])),
+            "le": (int(le_x[i]), int(le_y[i])),
+            "re": (int(re_x[i]), int(re_y[i])),
+            "spU": (int(sp_x[i]), int(sp_y[i])),
+            "spM": (int(spMx[i]), int(spMy[i])),
+            "spL": (int(spLx[i]), int(spLy[i])),
+            "ls": (int(ls_x[i]), int(ls_y[i])),
+            "rs": (int(rs_x[i]), int(rs_y[i])),
+            "tb": (int(tb_x[i]), int(tb_y[i]))
+        }
 
-        # bbox
-        
-        xs = [nx, lx, rx, sx, spL_x, lShoulder_x, rShoulder_x, lWrist_x, rWrist_x, tailBase_x]
-        ys = [ny, ly, ry, sy, spL_y, lShoulder_y, rShoulder_y, lWrist_y, rWrist_y, tailBase_y]
-        """
-        for (x, y) in [(nx, ny), (lx, ly), (rx, ry), (sx, sy), (spMx, spMy), (spL_x, spL_y), (lShoulder_x, lShoulder_y), (rShoulder_x, rShoulder_y), (tailBase_x, tailBase_y)]:
-            cv2.circle(frame, (x, y), 4, (0, 0, 255), -1)
-        xs = [nx, lx, rx, sx, spMx, spL_x, lShoulder_x, rShoulder_x, tailBase_x]
-        ys = [ny, ly, ry, sy, spMy, spL_y, lShoulder_y, rShoulder_y, tailBase_y]
+        # 1. Draw Keypoints
+        for pt in pts.values():
+            cv2.circle(frame, pt, 4, (0, 0, 255), -1)
 
+        # 2. Draw Bounding Box
+        xs = [p[0] for p in pts.values()]
+        ys = [p[1] for p in pts.values()]
         pad = 15
-        xmin = max(min(xs) - pad, 0)
-        ymin = max(min(ys) - pad, 0)
-        xmax = min(max(xs) + pad, w - 1)
-        ymax = min(max(ys) + pad, h - 1)
+        xmin, ymin = max(min(xs) - pad, 0), max(min(ys) - pad, 0)
+        xmax, ymax = min(max(xs) + pad, w - 1), min(max(ys) + pad, h - 1)
         cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 255, 0), 2)
 
-        # head direction
-        emx = int((lx + rx) / 2)
-        emy = int((ly + ry) / 2)
-        cv2.arrowedLine(frame, (emx, emy), (nx, ny), (255, 0, 0), 2)
-        
-        
+        # 3. Draw Head Direction Arrow
+        emx = int((pts["le"][0] + pts["re"][0]) / 2)
+        emy = int((pts["le"][1] + pts["re"][1]) / 2)
+        cv2.arrowedLine(frame, (emx, emy), pts["nose"], (255, 0, 0), 2)
 
-        # text overlays
-        # rodent position (use spine)
-        pos_x = float(kin.loc[i, "spine_x"])
-        pos_y = float(kin.loc[i, "spine_y"])
+        # 4. Behavioral Label Logic
+        cluster_id = int(ml_feat.loc[i, "visual_cluster"])
+        if label_map:
+            behavior_name = label_map.get(cluster_id, f"Cluster {cluster_id}")
+        else:
+            behavior_name = f"Cluster {cluster_id}"
 
+        # 5. Extract Kinematic Data
+        pos_x, pos_y = float(kin.loc[i, "spine_x"]), float(kin.loc[i, "spine_y"])
         speed = float(kin.loc[i, "speed_px_s"])
         angle = float(kin.loc[i, "head_angle_deg"])
-        behavior = str(beh.loc[i, "behavior"])
-        confidence = float(beh.loc[i, "confidence"])
 
+        # 6. Text Overlays
+        cv2.putText(frame, f"Speed: {speed:.1f}px/s", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        cv2.putText(frame, f"Head: {angle:.0f} deg", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        cv2.putText(frame, f"Behavior: {behavior_name} (ID: {cluster_id})", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
         cv2.putText(frame, f"Pos: ({pos_x:.1f}, {pos_y:.1f})", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
-
-        cv2.putText(frame, f"Speed: {speed:.1f}px/s", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        cv2.putText(frame, f"Head: {angle:.0f} deg", (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        cv2.putText(
-                    frame,
-                    f"Behavior: {behavior} ({confidence:.2f})",
-                    (10, 90),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (0, 255, 255),
-                    2,
-                )
-
 
         out.write(frame)
 
+    # Finalize files
     cap.release()
     out.release()
 
-    logs.append(f"[RENDER] Annotated video saved to {out_path}")
+    logs.append(f"[RENDER] Annotated video saved successfully to {out_path}")
     return out_path
