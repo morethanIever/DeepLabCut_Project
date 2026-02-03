@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import umap
 import os
 from pathlib import Path
 from sklearn.preprocessing import StandardScaler
@@ -10,6 +9,9 @@ import plotly.express as px
 
 
 def apply_umap(df):
+    from umap.umap_ import umap  # avoids importing parametric_umap / tensorflow
+    reducer = umap(n_neighbors=15, min_dist=0.1, n_components=2, random_state=42)
+    
     # 1. Select only numeric data
     X = df.select_dtypes(include=[np.number])
     # 2. Critical: Drop columns that are all zeros or NaNs (like start-of-video lags)

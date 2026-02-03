@@ -1,6 +1,7 @@
 # pipeline/run_pipeline.py
 import os
 import uuid
+import shutil
 from pathlib import Path
 import pandas as pd
 from pipeline.pose_dlc import run_deeplabcut_pose
@@ -22,11 +23,10 @@ from pipeline.visualisation.trajectory_turning_plot import plot_trajectory_with_
 from pipeline.nop.nop_analysis import run_nop_analysis
 from pipeline.nop.nop_plot import plot_nop
 
-#from pipeline.nop.nop_time_binned_short import run_nop_time_binned_short
-#from pipeline.nop.nop_time_binned_short_plot import plot_nop_time_binned_short
+from pipeline.render_overlay import render_annotated_video
 
-from pipeline.ML.ml_features import extract_ml_features
-from pipeline.ML.umap_plot import save_umap_plot
+#from pipeline.ML.ml_features import extract_ml_features
+#from pipeline.ML.umap_plot import save_umap_plot
 
 def save_uploaded_video(uploaded_file) -> str:
     import shutil
@@ -50,6 +50,8 @@ def run_full_pipeline(
     *,
     force_pose: bool = False,
     force_analysis: bool = False,
+    roi=None,
+    resize_to=None
 ):
     """
     Full analysis pipeline with caching.
@@ -61,11 +63,29 @@ def run_full_pipeline(
     """
     ensure_dirs()
 
+    dlc_video_dir = r"C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\videos"
+    os.makedirs(dlc_video_dir, exist_ok=True)
+
+
     # ----------------------------
     # 0) Save uploaded video
     # ----------------------------
-    input_video = save_uploaded_video(uploaded_file)
-    logs.append(f"[OK] Saved input video: {input_video}")
+    if isinstance(uploaded_file, str):
+        # Video is a path string (likely from temp/ after cropping/enhancing)
+        source_path = uploaded_file
+        video_filename = os.path.basename(source_path)
+        stable_input_path = os.path.join(dlc_video_dir, video_filename)
+        
+        # COPY from temp to permanent DLC folder if it's not already there
+        if os.path.abspath(source_path) != os.path.abspath(stable_input_path):
+            logs.append(f"[WORKFLOW] Moving preprocessed video to stable path: {video_filename}")
+            shutil.copy(source_path, stable_input_path)
+        
+        input_video = stable_input_path
+    else:
+        # Fresh upload object from Streamlit
+        input_video = save_uploaded_video(uploaded_file)
+        logs.append(f"[WORKFLOW] Saved fresh upload to: {input_video}")
 
     # ----------------------------
     # 1) Pose (DeepLabCut) [SLOW]
@@ -109,12 +129,18 @@ def run_full_pipeline(
     )
     
     logs.append(f"[OK] Turning rate CSV: {turn_csv}")
-    
+    scale = None
+    if roi is not None and resize_to is not None:
+        crop_w, crop_h = roi[2], roi[3]
+        new_w, new_h = resize_to
+        scale = (new_w / crop_w, new_h / crop_h)
     # nop analysis
     nop_summary_csv = run_nop_analysis(
         kin_csv,
         beh_csv,
-        out_dir="outputs/nop"
+        out_dir="outputs/nop",
+        roi=roi,
+        scale=scale
     )
     logs.append(f"[NOP] Summary CSV saved: {nop_summary_csv}")
     
@@ -126,7 +152,7 @@ def run_full_pipeline(
         object_right=(957, 130),
     )
     logs.append(f"[NOP] Validation plot saved: {nop_plot_path}")
-    
+    """
     # ----------------------------
     # 4) Render annotated video
     # ----------------------------
@@ -136,6 +162,7 @@ def run_full_pipeline(
         force=force_analysis
     )
     df_ml = pd.read_csv(ml_feat_csv)
+    
     if not df_ml.empty:
         umap_path = save_umap_plot(
             df_ml, 
@@ -151,7 +178,7 @@ def run_full_pipeline(
     df_ml['visual_cluster'] = cluster_labels
     df_ml.to_csv(ml_feat_csv, index=False)
 
-    logs.append(f"[OK] Behavioral clusters saved to: {ml_feat_csv}")
+    logs.append(f"[OK] Behavioral clusters saved to: {ml_feat_csv}")"""
     out_video = cached_outvideo_path(input_video)
 
     ALL_VIDEO_MAPS = {
@@ -171,15 +198,16 @@ def run_full_pipeline(
     else:
         logs.append(f"[WARNING] No verified map found for {video_id}. Showing raw Cluster IDs.")
     
-    render_annotated_video(
+    out_video = render_annotated_video(
         input_video=input_video,
         pose_csv=pose_csv,
         kin_csv=kin_csv,
         beh_csv=beh_csv,
-        ml_feat_csv=ml_feat_csv,
+        #ml_feat_csv=ml_feat_csv,
         logs=logs,
-        out_path=out_video,
-        label_map=current_map
+        out_path=out_video, # Uses the path determined by cache_utils
+        label_map=current_map,
+        roi=None
     )
 
 
@@ -201,6 +229,7 @@ def run_full_pipeline(
 
     return {
         "input_video": input_video,
+        "kin_csv": kin_csv,
         "out_video": out_video,
         "logs": logs,
         "speed_plot": speed_plot,
@@ -209,6 +238,6 @@ def run_full_pipeline(
         "turning_rate_plot_path": turning_rate_plot_path,
         "trajectory_turning_plot": trajectory_turning_plot,
         "nop_plot": nop_plot,
-        "ml_features": ml_feat_csv,
-        "umap_plot": umap_path
+        #"ml_features": ml_feat_csv,
+        #"umap_plot": umap_path
     }

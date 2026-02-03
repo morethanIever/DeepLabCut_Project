@@ -27,8 +27,27 @@ def distance(x1, y1, x2, y2):
 # -------------------------
 # Main NOP analysis
 # -------------------------
-def run_nop_analysis(kin_csv: str, beh_csv: str, out_dir="outputs/nop"
+def run_nop_analysis(kin_csv: str, beh_csv: str, out_dir="outputs/nop", roi=None, scale=None
 ) -> str:
+    # Make a deep copy (OBJECTS.copy() is shallow)
+    objects = {k: dict(v) for k, v in OBJECTS.items()}
+
+    # 1) If cropped: shift object coords
+    if roi is not None:
+        crop_x, crop_y, crop_w, crop_h = roi
+        for side in objects:
+            objects[side]["x"] -= crop_x
+            objects[side]["y"] -= crop_y
+
+    # 2) If resized after crop: scale coords
+    # scale = (sx, sy) where sx = new_width / crop_width (or old_width), sy = new_height / crop_height (or old_height)
+    if scale is not None:
+        sx, sy = scale
+        for side in objects:
+            objects[side]["x"] *= sx
+            objects[side]["y"] *= sy
+
+
     os.makedirs(out_dir, exist_ok=True)
 
     kin = pd.read_csv(kin_csv)
@@ -52,9 +71,13 @@ def run_nop_analysis(kin_csv: str, beh_csv: str, out_dir="outputs/nop"
     # -------------------------
     # Distance check
     # -------------------------
-    for side, obj in OBJECTS.items():
+    for side, obj in objects.items():
         d = distance(nose_x, nose_y, obj["x"], obj["y"])
         exploration[side] = ((d < OBJECT_RADIUS) & valid_behavior)
+    print("[NOP] object coords:", objects)
+    print("[NOP] exploration frames left:", exploration["left"].sum())
+    print("[NOP] exploration frames right:", exploration["right"].sum())
+
 
     # -------------------------
     # Extract exploration bouts
@@ -92,7 +115,26 @@ def run_nop_analysis(kin_csv: str, beh_csv: str, out_dir="outputs/nop"
             })
 
     events_df = pd.DataFrame(events)
-    events_df.to_csv(f"{out_dir}/nop_events.csv", index=False)
+
+    # If no events were detected, create an empty DF with expected columns
+    if events_df.empty:
+        events_df = pd.DataFrame(columns=["object", "start_frame", "end_frame", "duration_s"])
+
+    events_df.to_csv(os.path.join(out_dir, "nop_events.csv"), index=False)
+
+    if events_df.empty:
+        # No exploration bouts found → output a valid summary with zeros
+        summary_df = pd.DataFrame([
+            {"object": "left",  "total_exploration_time_s": 0.0, "exploration_bouts": 0},
+            {"object": "right", "total_exploration_time_s": 0.0, "exploration_bouts": 0},
+        ])
+        summary_df["NOP_index"] = 0.0
+        summary_df["NOP_ratio"] = 0.0
+        summary_df["delta_time_s"] = 0.0
+
+        summary_path = os.path.join(out_dir, "nop_summary.csv")
+        summary_df.to_csv(summary_path, index=False)
+        return summary_path
 
     # -------------------------
     # Summary stats

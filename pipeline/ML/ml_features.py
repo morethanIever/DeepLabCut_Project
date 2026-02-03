@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 from pipeline.cache_utils import ensure_dirs, cached_ml_features
-from pipeline.ML.umap_plot import apply_umap
+#from pipeline.ML.umap_plot import apply_umap
 # -----------------------------------
 # Feature extraction
 # -----------------------------------
@@ -69,17 +69,23 @@ def extract_ml_features(kin_csv: str, video_path: str, *, force=False) -> str:
         for i in range(1, lags + 1):
             final_feats[f'{col}_lag_{i}'] = feats[col].shift(i)
     final_feats = final_feats.copy().fillna(0)
-
+    return out_path
+"""
     print("[ML] Computing UMAP for visualization...")
-    umap_coords = apply_umap(final_feats)
+    try:
+        umap_coords = apply_umap(final_feats)
+    except Exception as e:
+        print("[WARN] UMAP failed:", e)
+        umap_coords = None
+
     
     # Combine original features with UMAP coordinates   
     final_df = pd.concat([feats, umap_coords], axis=1)
 
     final_df.to_csv(out_path, index=False)
-    print(f"[ML] Features saved to {out_path}")
+    print(f"[ML] Features saved to {out_path}")"""
 
-    return out_path
+    
 
 
 # -----------------------------------

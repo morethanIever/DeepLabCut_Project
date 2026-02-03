@@ -8,11 +8,12 @@ def render_annotated_video(
     pose_csv: str,
     kin_csv: str,
     beh_csv: str,
-    ml_feat_csv: str,
+    #ml_feat_csv: str,
     logs: list,
     *,
     out_path: str,
-    label_map=None
+    label_map=None,
+    roi=None
 ) -> str:
     """
     Render annotated video (bbox, head direction, speed, behavior).
@@ -27,7 +28,7 @@ def render_annotated_video(
     pose = pd.read_csv(pose_csv, header=[0, 1, 2])
     kin = pd.read_csv(kin_csv)
     beh = pd.read_csv(beh_csv)
-    ml_feat = pd.read_csv(ml_feat_csv)
+    #ml_feat = pd.read_csv(ml_feat_csv)
 
     # ----------------------------
     # Helper: safe keypoint access
@@ -69,6 +70,7 @@ def render_annotated_video(
     # Video IO
     # ----------------------------
     cap = cv2.VideoCapture(input_video)
+
     if not cap.isOpened():
         raise RuntimeError(f"[RENDER] Cannot open video: {input_video}")
 
@@ -99,47 +101,65 @@ def render_annotated_video(
     # ----------------------------
     # Render loop
     # ----------------------------
+    ref_w = roi[2] if roi else w 
+    ref_h = roi[3] if roi else h
+    scale_x = w / ref_w
+    scale_y = h / ref_h
+    off_x = roi[0] if roi else 0
+    off_y = roi[1] if roi else 0
+
     for i in range(max_frames):
         ret, frame = cap.read()
         if not ret:
             break
 
+        def transform_coords(raw_x, raw_y):
+            # Formula: (Original_Coordinate - Crop_Offset) * Scale_Factor
+            new_x = int((raw_x - off_x) * scale_x)
+            new_y = int((raw_y - off_y) * scale_y)
+            return (new_x, new_y)
+        
         # Extract current coordinates
         pts = {
-            "nose": (int(nose_x[i]), int(nose_y[i])),
-            "le": (int(le_x[i]), int(le_y[i])),
-            "re": (int(re_x[i]), int(re_y[i])),
-            "spU": (int(sp_x[i]), int(sp_y[i])),
-            "spM": (int(spMx[i]), int(spMy[i])),
-            "spL": (int(spLx[i]), int(spLy[i])),
-            "ls": (int(ls_x[i]), int(ls_y[i])),
-            "rs": (int(rs_x[i]), int(rs_y[i])),
-            "tb": (int(tb_x[i]), int(tb_y[i]))
+            "nose": transform_coords(nose_x[i], nose_y[i]),
+            "le":   transform_coords(le_x[i], le_y[i]),
+            "re":   transform_coords(re_x[i], re_y[i]),
+            "spU":  transform_coords(sp_x[i], sp_y[i]),
+            "spM":  transform_coords(spMx[i], spMy[i]),
+            "spL":  transform_coords(spLx[i], spLy[i]),
+            "ls":   transform_coords(ls_x[i], ls_y[i]),
+            "rs":   transform_coords(rs_x[i], rs_y[i]),
+            "tb":   transform_coords(tb_x[i], tb_y[i])
         }
 
-        # 1. Draw Keypoints
-        for pt in pts.values():
-            cv2.circle(frame, pt, 4, (0, 0, 255), -1)
+        raw_pos_x, raw_pos_y = float(kin.loc[i, "spine_x"]), float(kin.loc[i, "spine_y"])
+        display_pos = transform_coords(raw_pos_x, raw_pos_y)
+        speed = float(kin.loc[i, "speed_px_s"])
+        angle = float(kin.loc[i, "head_angle_deg"])
 
-        # 2. Draw Bounding Box
+        # 3. Draw Bounding Box (using already transformed pts)
         xs = [p[0] for p in pts.values()]
         ys = [p[1] for p in pts.values()]
-        pad = 15
-        xmin, ymin = max(min(xs) - pad, 0), max(min(ys) - pad, 0)
-        xmax, ymax = min(max(xs) + pad, w - 1), min(max(ys) + pad, h - 1)
+        dynamic_pad = int(15 * scale_x) 
+        
+        xmin, ymin = max(min(xs) - dynamic_pad, 0), max(min(ys) - dynamic_pad, 0)
+        xmax, ymax = min(max(xs) + dynamic_pad, w - 1), min(max(ys) + dynamic_pad, h - 1)
         cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 255, 0), 2)
 
+        # 4. Draw Keypoints
+        for pt in pts.values():
+            cv2.circle(frame, pt, 4, (0, 0, 255), -1)
         # 3. Draw Head Direction Arrow
         emx = int((pts["le"][0] + pts["re"][0]) / 2)
         emy = int((pts["le"][1] + pts["re"][1]) / 2)
         cv2.arrowedLine(frame, (emx, emy), pts["nose"], (255, 0, 0), 2)
 
         # 4. Behavioral Label Logic
-        cluster_id = int(ml_feat.loc[i, "visual_cluster"])
+        """cluster_id = int(ml_feat.loc[i, "visual_cluster"])
         if label_map:
             behavior_name = label_map.get(cluster_id, f"Cluster {cluster_id}")
         else:
-            behavior_name = f"Cluster {cluster_id}"
+            behavior_name = f"Cluster {cluster_id}"""
 
         # 5. Extract Kinematic Data
         pos_x, pos_y = float(kin.loc[i, "spine_x"]), float(kin.loc[i, "spine_y"])
@@ -149,8 +169,8 @@ def render_annotated_video(
         # 6. Text Overlays
         cv2.putText(frame, f"Speed: {speed:.1f}px/s", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         cv2.putText(frame, f"Head: {angle:.0f} deg", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        cv2.putText(frame, f"Behavior: {behavior_name} (ID: {cluster_id})", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-        cv2.putText(frame, f"Pos: ({pos_x:.1f}, {pos_y:.1f})", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+        #cv2.putText(frame, f"Behavior: {behavior_name} (ID: {cluster_id})", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+        cv2.putText(frame, f"Pos: ({display_pos[0]}, {display_pos[1]})", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
 
         out.write(frame)
 
