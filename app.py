@@ -10,6 +10,9 @@ from pipeline.run_pipeline import run_full_pipeline
 from pipeline.preprocessing.crop import select_crop_roi, apply_crop
 from pipeline.preprocessing.downsmaple import apply_downsample
 from pipeline.ROI.ROI_anlaysis import run_multi_roi_analysis
+from pipeline.ROI.canvasToROI import canvas_objects_to_rois
+from pipeline.ROI.ROItoCanvas import rois_to_canvas_json
+from pipeline.ROI.ROIEditor import render_roi_editor
 
 st.set_page_config(page_title="Rodent Kinematics Analyzer", layout="wide")
 st.title("Rodent Kinematics Analyzer 🐭")
@@ -279,253 +282,6 @@ with st.expander("Pose QC (Quality Control)", expanded=False):
 col1, col2 = st.columns(2)
 
 
-
-from streamlit_drawable_canvas import st_canvas
-import numpy as np
-import cv2
-from PIL import Image
-
-def canvas_objects_to_rois(objs):
-    """
-    streamlit-drawable-canvas object list -> roi_list
-    roi format:
-      {
-        "id": "roi_1",
-        "name": "ROI_1",
-        "type": "circle" | "rect",
-        "cx": float,
-        "cy": float,
-        "radius": float | None,
-        "w": float | None,
-        "h": float | None,
-        "left": float,
-        "top": float
-      }
-    """
-    rois = []
-    idx = 1
-
-    for o in objs or []:
-        t = o.get("type")
-
-        if t == "circle":
-            r = float(o.get("radius", 0))
-            left = float(o.get("left", 0))
-            top = float(o.get("top", 0))
-            cx = left + r
-            cy = top + r
-
-            rois.append({
-                "id": f"roi_{idx}",
-                "name": f"ROI_{idx}",
-                "type": "circle",
-                "cx": cx, "cy": cy,
-                "radius": r,
-                "w": None, "h": None,
-                "left": left, "top": top,
-            })
-            idx += 1
-
-        elif t == "rect":
-            left = float(o.get("left", 0))
-            top = float(o.get("top", 0))
-            w = float(o.get("width", 0))
-            h = float(o.get("height", 0))
-            cx = left + w / 2.0
-            cy = top + h / 2.0
-
-            rois.append({
-                "id": f"roi_{idx}",
-                "name": f"ROI_{idx}",
-                "type": "rect",
-                "cx": cx, "cy": cy,
-                "radius": None,
-                "w": w, "h": h,
-                "left": left, "top": top,
-            })
-            idx += 1
-
-    return rois
-
-
-import cv2
-from PIL import Image
-from streamlit_drawable_canvas import st_canvas
-
-def rois_to_canvas_json(roi_list, default_radius=80):
-    """
-    saved roi_list -> initial_drawing json (canvas에 기존 ROI를 다시 그려서 보여줌)
-    """
-    objects = []
-    for r in roi_list:
-        if r["type"] == "circle":
-            rad = float(r.get("radius") or default_radius)
-            objects.append({
-                "type": "circle",
-                "left": float(r["cx"]) - rad,
-                "top": float(r["cy"]) - rad,
-                "radius": rad,
-                "fill": "rgba(0,255,0,0.15)",
-                "stroke": "rgba(0,255,0,0.9)",
-                "strokeWidth": 2,
-            })
-        elif r["type"] == "rect":
-            objects.append({
-                "type": "rect",
-                "left": float(r["left"]),
-                "top": float(r["top"]),
-                "width": float(r["w"]),
-                "height": float(r["h"]),
-                "fill": "rgba(255,0,0,0.10)",
-                "stroke": "rgba(255,0,0,0.9)",
-                "strokeWidth": 2,
-            })
-    return {"version": "4.4.0", "objects": objects}
-
-
-def render_roi_editor():
-    st.title("🎯 ROI Editor")
-    st.write("ROI를 그린 뒤 **Save & Back**을 누르면 메인 화면에서 분석할 수 있어요.")
-
-    if st.session_state.input_video_path is None:
-        st.error("먼저 비디오를 업로드하세요.")
-        if st.button("⬅ Back"):
-            st.session_state.page = "main"
-            st.rerun()
-        return
-
-    # canvas reset key
-    if "roi_canvas_rev" not in st.session_state:
-        st.session_state.roi_canvas_rev = 0
-
-    # selection state
-    if "roi_delete_ids" not in st.session_state:
-        st.session_state.roi_delete_ids = set()
-
-    # background frame
-    cap = cv2.VideoCapture(st.session_state.input_video_path)
-    ok, frame = cap.read()
-    cap.release()
-    if not ok:
-        st.error("비디오 첫 프레임을 읽지 못했습니다.")
-        return
-
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    bg = Image.fromarray(frame_rgb)
-
-    # draw mode
-    draw_mode = st.radio("Drawing mode", ["circle", "rect"], horizontal=True, key="roi_draw_mode")
-
-    # radius for analysis (global)
-    radius = st.slider(
-        "Exploration Radius (px)",
-        10, 300,
-        int(st.session_state.get("roi_radius", 80)),
-        key="roi_radius_editor"
-    )
-    st.session_state.roi_radius = radius
-
-    # canvas
-    canvas_key = f"roi_canvas_{st.session_state.roi_canvas_rev}"
-    canvas_result = st_canvas(
-        background_image=bg,
-        drawing_mode=draw_mode,
-        update_streamlit=True,
-        stroke_width=2,
-        stroke_color="rgba(0,255,0,1.0)" if draw_mode == "circle" else "rgba(255,0,0,1.0)",
-        fill_color="rgba(0,255,0,0.15)" if draw_mode == "circle" else "rgba(255,0,0,0.10)",
-        height=bg.height,
-        width=bg.width,
-        key=canvas_key,
-        initial_drawing=rois_to_canvas_json(st.session_state.roi_list, default_radius=radius),
-    )
-
-    # current ROIs computed from canvas
-    objs = canvas_result.json_data.get("objects", []) if canvas_result.json_data else []
-    current_rois = canvas_objects_to_rois(objs)
-
-    st.divider()
-    st.subheader("🧾 ROI List (select to delete)")
-    if not current_rois:
-        st.info("아직 ROI가 없습니다. 캔버스에서 ROI를 그려주세요.")
-    else:
-        # show selectable list
-        delete_ids = set()
-        for r in current_rois:
-            label = f"{r['id']} | {r['type']} | (cx={r['cx']:.1f}, cy={r['cy']:.1f})"
-            checked = st.checkbox(label, key=f"chk_{r['id']}")
-            if checked:
-                delete_ids.add(r["id"])
-
-        c1, c2, c3, c4 = st.columns(4)
-
-        with c1:
-            if st.button("🗑 Delete Selected"):
-                # remove selected from current_rois and update session roi_list
-                kept = [r for r in current_rois if r["id"] not in delete_ids]
-                st.session_state.roi_list = kept
-                st.session_state.roi_canvas_rev += 1  # force canvas refresh
-                st.rerun()
-
-        with c2:
-            if st.button("🧹 Clear All ROIs"):
-                st.session_state.roi_list = []
-                st.session_state.roi_canvas_rev += 1
-                st.rerun()
-
-        with c3:
-            if st.button("💾 Save & Back"):
-                # Save exactly what is currently on canvas (after deletes)
-                st.session_state.roi_list = current_rois
-                st.session_state.page = "main"
-                st.rerun()
-
-        with c4:
-            if st.button("⬅ Cancel"):
-                st.session_state.page = "main"
-                st.rerun()
-
-
-# ----------------------------
-# Page routing (AFTER function definitions)
-# ----------------------------
-if st.session_state.page == "roi":
-    render_roi_editor()
-    st.stop()
-
-st.sidebar.header("📍 ROI Analysis")
-
-if st.sidebar.button("🎯 ROI Analyze (Draw ROIs)"):
-    st.session_state.page = "roi"
-    st.rerun()
-
-st.sidebar.write(f"Saved ROIs: {len(st.session_state.roi_list)}")
-st.sidebar.write(f"Radius: {st.session_state.roi_radius}px")
-
-if st.sidebar.button("▶ Run ROI Analysis"):
-    if st.session_state.kin_csv_path is None:
-        st.sidebar.error("먼저 Analyze Video를 실행해서 kin_csv_path를 만들어야 해요.")
-    elif not st.session_state.roi_list:
-        st.sidebar.error("ROI가 없습니다. ROI Analyze에서 ROI를 그려주세요.")
-    else:
-        summary_df, plot_path = run_multi_roi_analysis(
-            kin_csv=st.session_state.kin_csv_path,
-            roi_list=st.session_state.roi_list,
-            radius=st.session_state.roi_radius,
-            fps=30,
-            out_dir="outputs/roi",
-        )
-        st.session_state.roi_result_df = summary_df
-        st.session_state.roi_result_plot = plot_path
-        st.rerun()
-
-if st.session_state.roi_result_plot is not None:
-    st.subheader("📊 ROI Analysis Result")
-    st.image(st.session_state.roi_result_plot)
-    st.dataframe(st.session_state.roi_result_df)
-
-
-
 # ----------------------------
 # Input preview
 # ----------------------------
@@ -591,6 +347,44 @@ if st.session_state.output_video is not None:
     with st.expander("Logs"):
         st.code("\n".join(st.session_state.logs))
         
+
+# ----------------------------
+# Page routing (AFTER function definitions)
+# ----------------------------
+if st.session_state.page == "roi":
+    render_roi_editor()
+    st.stop()
+
+st.sidebar.header("📍 ROI Analysis")
+
+if st.sidebar.button("🎯 ROI Analyze (Draw ROIs)"):
+    st.session_state.page = "roi"
+    st.rerun()
+
+st.sidebar.write(f"Saved ROIs: {len(st.session_state.roi_list)}")
+st.sidebar.write(f"Radius: {st.session_state.roi_radius}px")
+
+if st.sidebar.button("▶ Run ROI Analysis"):
+    if st.session_state.kin_csv_path is None:
+        st.sidebar.error("먼저 Analyze Video를 실행해서 kin_csv_path를 만들어야 해요.")
+    elif not st.session_state.roi_list:
+        st.sidebar.error("ROI가 없습니다. ROI Analyze에서 ROI를 그려주세요.")
+    else:
+        summary_df, plot_path = run_multi_roi_analysis(
+            kin_csv=st.session_state.kin_csv_path,
+            roi_list=st.session_state.roi_list,
+            radius=st.session_state.roi_radius,
+            fps=30,
+            out_dir="outputs/roi",
+        )
+        st.session_state.roi_result_df = summary_df
+        st.session_state.roi_result_plot = plot_path
+        st.rerun()
+
+if st.session_state.roi_result_plot is not None:
+    st.subheader("📊 ROI Analysis Result")
+    st.image(st.session_state.roi_result_plot)
+    st.dataframe(st.session_state.roi_result_df)
 
 
     if st.session_state.speed_plot is not None:
