@@ -10,9 +10,8 @@ from pipeline.run_pipeline import run_full_pipeline
 from pipeline.preprocessing.crop import select_crop_roi, apply_crop
 from pipeline.preprocessing.downsmaple import apply_downsample
 from pipeline.ROI.ROI_anlaysis import run_multi_roi_analysis
-from pipeline.ROI.canvasToROI import canvas_objects_to_rois
-from pipeline.ROI.ROItoCanvas import rois_to_canvas_json
 from pipeline.ROI.ROIEditor import render_roi_editor
+from pipeline.behavior_annotation.annotator_ui import render_behavior_annotator_page
 
 st.set_page_config(page_title="Rodent Kinematics Analyzer", layout="wide")
 st.title("Rodent Kinematics Analyzer 🐭")
@@ -74,6 +73,10 @@ if "roi_result_df" not in st.session_state:
 
 if "roi_result_plot" not in st.session_state:
     st.session_state.roi_result_plot = None
+
+if "page" not in st.session_state:
+    st.session_state.page = "main"   # "main" | "roi" | "annotate"
+
 
 
 # ----------------------------
@@ -157,10 +160,6 @@ if uploaded is not None:
                     cap.release()
 
                     st.rerun()
-
-
-
-
 
     with c2:
         with st.expander("⏱ Shorten"):
@@ -387,28 +386,41 @@ if st.session_state.roi_result_plot is not None:
     st.dataframe(st.session_state.roi_result_df)
 
 
-    if st.session_state.speed_plot is not None:
-        st.subheader("Speed over time")
-        st.image(st.session_state.speed_plot, width=700)
+st.sidebar.header("🧠 Annotation")
+
+if st.sidebar.button("📝 Behavior Annotator"):
+    st.session_state.page = "annotate"
+    st.rerun()
+
+if st.session_state.page == "annotate":
+    render_behavior_annotator_page(
+        video_path=st.session_state.input_video_path,
+        out_csv="outputs/annotations",
+    )
+    st.stop()
+
+if st.session_state.speed_plot is not None:
+    st.subheader("Speed over time")
+    st.image(st.session_state.speed_plot, width=700)
+
+if st.session_state.trajectory_plot is not None:
+    st.subheader("trajectory")
+    st.image(st.session_state.trajectory_plot, width=700)
     
-    if st.session_state.trajectory_plot is not None:
-        st.subheader("trajectory")
-        st.image(st.session_state.trajectory_plot, width=700)
-        
-    if st.session_state.trajectory_behavior is not None:
-        st.subheader("trajectory by behaviour")
-        st.image(st.session_state.trajectory_behavior, width=700)
-        
-    if st.session_state.turning_rate_plot_path is not None:
-        st.subheader("turning rate")
-        st.image(st.session_state.turning_rate_plot_path, width=700)
+if st.session_state.trajectory_behavior is not None:
+    st.subheader("trajectory by behaviour")
+    st.image(st.session_state.trajectory_behavior, width=700)
     
-    if st.session_state.trajectory_turning_plot is not None:
-        st.subheader("trajectory + turning rate")
-        st.image(st.session_state.trajectory_turning_plot, width=700)
-        
-    if st.session_state.nop_plot is not None:
-        st.subheader("nop")
-        st.image(st.session_state.nop_plot, width=700)
+if st.session_state.turning_rate_plot_path is not None:
+    st.subheader("turning rate")
+    st.image(st.session_state.turning_rate_plot_path, width=700)
+
+if st.session_state.trajectory_turning_plot is not None:
+    st.subheader("trajectory + turning rate")
+    st.image(st.session_state.trajectory_turning_plot, width=700)
+    
+if st.session_state.nop_plot is not None:
+    st.subheader("nop")
+    st.image(st.session_state.nop_plot, width=700)
 
 

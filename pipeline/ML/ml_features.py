@@ -69,6 +69,8 @@ def extract_ml_features(kin_csv: str, video_path: str, *, force=False) -> str:
         for i in range(1, lags + 1):
             final_feats[f'{col}_lag_{i}'] = feats[col].shift(i)
     final_feats = final_feats.copy().fillna(0)
+    final_feats.to_csv(out_path, index=False)
+    print(f"[ML] Features saved to {out_path}")
     return out_path
 """
     print("[ML] Computing UMAP for visualization...")
