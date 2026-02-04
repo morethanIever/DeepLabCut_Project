@@ -25,7 +25,7 @@ from pipeline.nop.nop_plot import plot_nop
 
 from pipeline.render_overlay import render_annotated_video
 
-#from pipeline.ML.ml_features import extract_ml_features
+from pipeline.ML.ml_features import extract_ml_features
 #from pipeline.ML.umap_plot import save_umap_plot
 
 def save_uploaded_video(uploaded_file) -> str:
@@ -152,7 +152,7 @@ def run_full_pipeline(
         object_right=(957, 130),
     )
     logs.append(f"[NOP] Validation plot saved: {nop_plot_path}")
-    """
+    
     # ----------------------------
     # 4) Render annotated video
     # ----------------------------
@@ -161,7 +161,7 @@ def run_full_pipeline(
         input_video,
         force=force_analysis
     )
-    df_ml = pd.read_csv(ml_feat_csv)
+    """df_ml = pd.read_csv(ml_feat_csv)
     
     if not df_ml.empty:
         umap_path = save_umap_plot(
@@ -203,7 +203,7 @@ def run_full_pipeline(
         pose_csv=pose_csv,
         kin_csv=kin_csv,
         beh_csv=beh_csv,
-        #ml_feat_csv=ml_feat_csv,
+        ml_feat_csv=ml_feat_csv,
         logs=logs,
         out_path=out_video, # Uses the path determined by cache_utils
         label_map=current_map,
@@ -238,6 +238,6 @@ def run_full_pipeline(
         "turning_rate_plot_path": turning_rate_plot_path,
         "trajectory_turning_plot": trajectory_turning_plot,
         "nop_plot": nop_plot,
-        #"ml_features": ml_feat_csv,
+        "ml_features": ml_feat_csv,
         #"umap_plot": umap_path
     }

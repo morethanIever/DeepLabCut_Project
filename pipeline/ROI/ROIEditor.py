@@ -42,15 +42,6 @@ def render_roi_editor():
     # draw mode
     draw_mode = st.radio("Drawing mode", ["circle", "rect"], horizontal=True, key="roi_draw_mode")
 
-    # radius for analysis (global)
-    radius = st.slider(
-        "Exploration Radius (px)",
-        10, 300,
-        int(st.session_state.get("roi_radius", 80)),
-        key="roi_radius_editor"
-    )
-    st.session_state.roi_radius = radius
-
     # canvas
     canvas_key = f"roi_canvas_{st.session_state.roi_canvas_rev}"
     canvas_result = st_canvas(
@@ -63,7 +54,7 @@ def render_roi_editor():
         height=bg.height,
         width=bg.width,
         key=canvas_key,
-        initial_drawing=rois_to_canvas_json(st.session_state.roi_list, default_radius=radius),
+        initial_drawing=rois_to_canvas_json(st.session_state.roi_list),
     )
 
     # current ROIs computed from canvas
@@ -76,22 +67,32 @@ def render_roi_editor():
         st.info("아직 ROI가 없습니다. 캔버스에서 ROI를 그려주세요.")
     else:
         # show selectable list
-        delete_ids = set()
+        delete_ids = set(st.session_state.roi_delete_ids)
+
         for r in current_rois:
-            label = f"{r['id']} | {r['type']} | (cx={r['cx']:.1f}, cy={r['cy']:.1f})"
-            checked = st.checkbox(label, key=f"chk_{r['id']}")
+            key = f"chk_{r['id']}"
+            checked = st.checkbox(
+                f"{r['id']} | {r['type']} | (cx={r['cx']:.1f}, cy={r['cy']:.1f})",
+                key=key,
+                value=(r["id"] in delete_ids)
+            )
             if checked:
                 delete_ids.add(r["id"])
+            else:
+                delete_ids.discard(r["id"])
+
+        st.session_state.roi_delete_ids = delete_ids
 
         c1, c2, c3, c4 = st.columns(4)
 
         with c1:
             if st.button("🗑 Delete Selected"):
-                # remove selected from current_rois and update session roi_list
-                kept = [r for r in current_rois if r["id"] not in delete_ids]
+                kept = [r for r in current_rois if r["id"] not in st.session_state.roi_delete_ids]
                 st.session_state.roi_list = kept
-                st.session_state.roi_canvas_rev += 1  # force canvas refresh
+                st.session_state.roi_delete_ids = set()   # ✅ 삭제 후 선택 초기화
+                st.session_state.roi_canvas_rev += 1
                 st.rerun()
+
 
         with c2:
             if st.button("🧹 Clear All ROIs"):

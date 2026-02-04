@@ -8,7 +8,7 @@ def render_annotated_video(
     pose_csv: str,
     kin_csv: str,
     beh_csv: str,
-    #ml_feat_csv: str,
+    ml_feat_csv: str,
     logs: list,
     *,
     out_path: str,
@@ -28,7 +28,7 @@ def render_annotated_video(
     pose = pd.read_csv(pose_csv, header=[0, 1, 2])
     kin = pd.read_csv(kin_csv)
     beh = pd.read_csv(beh_csv)
-    #ml_feat = pd.read_csv(ml_feat_csv)
+    ml_feat = pd.read_csv(ml_feat_csv)
 
     # ----------------------------
     # Helper: safe keypoint access
