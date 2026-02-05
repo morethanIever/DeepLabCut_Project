@@ -112,13 +112,25 @@ def run_full_pipeline(
     # ----------------------------
     # 2) Kinematics [FAST]
     # ----------------------------
+    map_json = Path(out_dir).parent / "assets" / "kinematics_map.json"
+    map_yaml = Path(out_dir).parent / "assets" / "kinematics_map.yaml"
+    map_yml = Path(out_dir).parent / "assets" / "kinematics_map.yml"
+    mapping_path = None
+    if map_json.exists():
+        mapping_path = str(map_json)
+    elif map_yaml.exists():
+        mapping_path = str(map_yaml)
+    elif map_yml.exists():
+        mapping_path = str(map_yml)
+
     kin_csv = compute_kinematics(
         pose_csv,
         input_video,
         logs,
         force=force_analysis,
         out_dir=out_dir,
-        cache_key=cache_key
+        cache_key=cache_key,
+        mapping_path=mapping_path,
     )
     logs.append(f"[OK] Kinematics CSV: {kin_csv}")
 

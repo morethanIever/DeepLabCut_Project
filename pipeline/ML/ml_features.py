@@ -40,20 +40,21 @@ def extract_ml_features(
 
     df = pd.read_csv(kin_csv)
 
+    # If required columns are missing, skip ML features and save a minimal file.
     required = [
         "speed_px_s",
         "turning_rate_deg",
         "move_turn_angle_deg",
-        "nose_x", "nose_y",
         "spine_x", "spine_y",
-        "left_shoulder_x", "left_shoulder_y",
-        "right_shoulder_x", "right_shoulder_y",
-        "spine_lower_x", "spine_lower_y",
-        "head_spine_angle_deg",
     ]
-    for c in required:
-        if c not in df.columns:
-            raise RuntimeError(f"[ML] Missing column: {c}")
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        frame = df["frame"].astype(int) if "frame" in df.columns else pd.Series(np.arange(len(df)), name="frame")
+        minimal = pd.DataFrame({"frame": frame})
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        minimal.to_csv(out_path, index=False)
+        print(f"[ML] Skipped features (missing columns {missing}). Saved minimal file: {out_path}")
+        return out_path
 
     def get_dist(x1, y1, x2, y2):
         return np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
@@ -66,16 +67,16 @@ def extract_ml_features(
     frame = df["frame"].astype(int) if "frame" in df.columns else pd.Series(np.arange(n, dtype=int), name="frame")
 
     # numeric views (avoid dtype surprises)
-    nose_x = df["nose_x"].astype(float)
-    nose_y = df["nose_y"].astype(float)
+    nose_x = df["nose_x"].astype(float) if "nose_x" in df.columns else pd.Series(np.zeros(n))
+    nose_y = df["nose_y"].astype(float) if "nose_y" in df.columns else pd.Series(np.zeros(n))
     spine_x = df["spine_x"].astype(float)
     spine_y = df["spine_y"].astype(float)
-    spineL_x = df["spine_lower_x"].astype(float)
-    spineL_y = df["spine_lower_y"].astype(float)
-    lsh_x = df["left_shoulder_x"].astype(float)
-    lsh_y = df["left_shoulder_y"].astype(float)
-    rsh_x = df["right_shoulder_x"].astype(float)
-    rsh_y = df["right_shoulder_y"].astype(float)
+    spineL_x = df["spine_lower_x"].astype(float) if "spine_lower_x" in df.columns else pd.Series(np.zeros(n))
+    spineL_y = df["spine_lower_y"].astype(float) if "spine_lower_y" in df.columns else pd.Series(np.zeros(n))
+    lsh_x = df["left_shoulder_x"].astype(float) if "left_shoulder_x" in df.columns else pd.Series(np.zeros(n))
+    lsh_y = df["left_shoulder_y"].astype(float) if "left_shoulder_y" in df.columns else pd.Series(np.zeros(n))
+    rsh_x = df["right_shoulder_x"].astype(float) if "right_shoulder_x" in df.columns else pd.Series(np.zeros(n))
+    rsh_y = df["right_shoulder_y"].astype(float) if "right_shoulder_y" in df.columns else pd.Series(np.zeros(n))
 
     scale = float(fps) if fps is not None else 1.0  # frame-step -> per-second if fps given
 
@@ -89,7 +90,7 @@ def extract_ml_features(
             "body_stretch": np.hypot(nose_x - spineL_x, nose_y - spineL_y),
             "shoulder_width": get_dist(lsh_x, lsh_y, rsh_x, rsh_y),
             "spine_len": np.hypot(spine_x - spineL_x, spine_y - spineL_y),
-            "head_spine_angle": df["head_spine_angle_deg"].astype(float),
+            "head_spine_angle": df["head_spine_angle_deg"].astype(float) if "head_spine_angle_deg" in df.columns else 0.0,
         }
     )
 

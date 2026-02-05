@@ -17,6 +17,9 @@ from pipeline.ROI.ROI_anlaysis import run_multi_roi_analysis
 from pipeline.ROI.ROIEditor import render_roi_editor
 from pipeline.behavior_annotation.annotator_ui import render_behavior_annotator_page
 from output_video import make_streamlit_playable_mp4
+from pipeline.projectManagement.projectSetup import render_project_setup_page
+from pipeline.projectManagement.syncProjectData import sync_project_data
+from pipeline.projectManagement.init_session import init_session_state, reset_analysis_state, _get_latest_file
 
 # --- 전역 설정 ---
 PROJECTS_ROOT = "projects"
@@ -24,154 +27,37 @@ st.set_page_config(page_title="Rodent Kinematics Analyzer", layout="wide", page_
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.makedirs("temp", exist_ok=True)
 
-# --- [1] Session State & Utils ---
-def init_session_state():
-    defaults = {
-        "uploaded_file_id": None, "input_video_path": None, "output_video": None,
-        "logs": [], "page": "main", "kin_csv_path": None, "crop_roi": None, "resize_to": None,
-        "speed_plot": None, "trajectory_plot": None, "trajectory_behavior": None,
-        "turning_rate_plot_path": None, "trajectory_turning_plot": None, "nop_plot": None,
-        "roi_list": [], "roi_radius": 80, "roi_result_df": None, "roi_result_plot": None,
-        "active_project": None, "active_profile": None,
-        "original_video_name": None,
-        "experiment_type": "Open Field", "camera_view": "Top View"
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-def reset_analysis_state():
-    keys = ["output_video", "logs", "speed_plot", "trajectory_plot", "trajectory_behavior",
-            "turning_rate_plot_path", "trajectory_turning_plot", "nop_plot", "kin_csv_path",
-            "roi_result_df", "roi_result_plot"]
-    for k in keys: st.session_state[k] = None
-    st.session_state.logs = []
-
-def _get_latest_file(pattern_list):
-    all_files = []
-    for p in pattern_list:
-        all_files.extend(glob.glob(str(p), recursive=True))
-    valid_files = [f for f in all_files if os.path.exists(f)]
-    return max(valid_files, key=os.path.getmtime) if valid_files else None
-
-def sync_project_data():
-    """프로젝트 폴더 내의 결과물을 CSV 해시 파일명에 맞춰 정밀하게 동기화"""
-    active = st.session_state.active_project
-    if not active or active == "(no projects yet)": return
-
-    base_dir = Path(PROJECTS_ROOT) / active / "outputs"
-    plots_dir = base_dir / "plots"
-    if not plots_dir.exists(): return
-
-    # 1. Kinematics CSV 찾기 (가장 최근 분석된 데이터 기준)
-    if not st.session_state.kin_csv_path:
-        st.session_state.kin_csv_path = _get_latest_file([base_dir / "**/*kin*.csv"])
-
-    # 2. CSV가 있으면 해당 해시값(prefix)으로 시작하는 모든 PNG를 긁어옴
-    if st.session_state.kin_csv_path:
-        csv_stem = Path(st.session_state.kin_csv_path).stem
-        prefix = csv_stem.split('_')[0] # '3442abf8...' 추출
-
-        # 매핑 규칙 정의 (사용자 제공 파일명 기반)
-        mapping = {
-            "speed_plot": f"{prefix}_kinematics_speed.png",
-            "trajectory_plot": f"{prefix}_kinematics_trajectory_speed.png", # 경로 예시 반영
-            "trajectory_behavior": f"{prefix}_kinematics_trajectory_behavior.png",
-            "turning_rate_plot_path": f"{prefix}_kinematics_turning_rate.png",
-            "trajectory_turning_plot": f"{prefix}_kinematics_trajectory_turning.png",
-            "nop_plot": f"{prefix}_kinematics_nop.png"
-        }
-
-        for key, filename in mapping.items():
-            full_path = plots_dir / filename
-            # NOP의 경우 하위 폴더에 있을 수 있으므로 체크
-            if not full_path.exists():
-                alt_path = base_dir / "nop" / filename
-                if alt_path.exists(): full_path = alt_path
-
-            # 파일이 실제로 존재하면 세션에 강제 업데이트
-            if full_path.exists():
-                st.session_state[key] = str(full_path)
-            else:
-                # 파일이 없으면 혹시 모르니 패턴 검색 시도
-                found = _get_latest_file([plots_dir / f"{prefix}*{key.split('_')[0]}*.png"])
-                if found: st.session_state[key] = found
-
 init_session_state()
 
-# --- [2] 사이드바: 프로젝트 관리 ---
-# --- [2] Project Setup Page ---
-def render_project_setup_page():
-    st.title("Project & Config Setup")
+def _delete_files(paths: list[str]) -> None:
+    for p in paths:
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
 
-    projects = list_projects(PROJECTS_ROOT)
-    has_projects = bool(projects)
-
-    with st.container(border=True):
-        st.subheader("Select or Create Project")
-
-        selected_proj = st.selectbox(
-            "Existing Projects",
-            options=projects if has_projects else ["(no projects yet)"],
-            index=projects.index(st.session_state.active_project) if st.session_state.active_project in projects else 0,
-            disabled=not has_projects,
-        )
-
-        new_name = st.text_input("New Project Name").strip()
-
-        if st.button("Create Project", use_container_width=True) and new_name:
-            create_project(PROJECTS_ROOT, new_name)
-            st.session_state.active_project = new_name
-            reset_analysis_state()
-            st.rerun()
-
-        if has_projects and selected_proj != st.session_state.active_project:
-            st.session_state.active_project = selected_proj
-            reset_analysis_state()
-
-    if st.session_state.active_project and st.session_state.active_project != "(no projects yet)":
-        with st.container(border=True):
-            st.subheader("DLC Config")
-
-            prof = load_profile(PROJECTS_ROOT, st.session_state.active_project)
-            st.session_state.active_profile = prof
-
-            cfg_up = st.file_uploader("Upload config.yaml", type=["yaml", "yml"])
-            if st.button("Apply Uploaded Config", use_container_width=True) and cfg_up:
-                import_dlc_config_file(PROJECTS_ROOT, st.session_state.active_project, cfg_up)
-                st.rerun()
-
-            cur_cfg = prof.get("dlc", {}).get("config_path", "")
-            new_cfg_path = st.text_input("Direct Path", value=cur_cfg)
-            if st.button("Update Path", use_container_width=True):
-                set_dlc_config(PROJECTS_ROOT, st.session_state.active_project, new_cfg_path)
-                st.rerun()
-
-            st.caption(f"Status: {'Connected' if os.path.exists(cur_cfg) else 'Not Found'}")
-
-        # Experiment type & camera settings
-        with st.container(border=True):
-            st.subheader("Experiment Type")
-            st.session_state.experiment_type = st.selectbox(
-                "Select Experiment Type",
-                ["Open Field", "NOP", "VR", "Maze"],
-                index=["Open Field", "NOP", "VR", "Maze"].index(st.session_state.experiment_type)
-                if st.session_state.experiment_type in ["Open Field", "NOP", "VR", "Maze"] else 0,
-            )
-
-            st.subheader("Camera Setting")
-            st.session_state.camera_view = st.selectbox(
-                "Select Camera View",
-                ["Top View", "Side", "Down"],
-                index=["Top View", "Side", "Down"].index(st.session_state.camera_view)
-                if st.session_state.camera_view in ["Top View", "Side", "Down"] else 0,
-            )
+def _clear_project_cache(proj_out_dir: str, prefix: str, *, clear_pose: bool, clear_analysis: bool) -> None:
+    if clear_pose:
+        _delete_files([
+            os.path.join(proj_out_dir, "poses", f"{prefix}_filtered.csv"),
+        ])
+    if clear_analysis:
+        patterns = [
+            os.path.join(proj_out_dir, "kinematics", f"{prefix}_*.csv"),
+            os.path.join(proj_out_dir, "behavior", f"{prefix}_*.csv"),
+            os.path.join(proj_out_dir, "ml", f"{prefix}_*.csv"),
+            os.path.join(proj_out_dir, "plots", f"{prefix}_*.png"),
+            os.path.join(proj_out_dir, "nop", f"{prefix}_*.csv"),
+        ]
+        for pat in patterns:
+            for p in glob.glob(pat):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
 
 
-
-        if st.button("Go to Main Page", type="primary", use_container_width=True):
-            st.session_state.page = "main"
-            st.rerun()
 
 # --- [3] Sidebar ---
 def render_sidebar():
@@ -201,13 +87,40 @@ def render_sidebar():
         if st.sidebar.button("🏠 Home", use_container_width=True, type="primary"):
             st.session_state.page = "main"; st.rerun()
         
-        cols = st.sidebar.columns(2)
-        if cols[0].button("🎯 ROIs", use_container_width=True):
-            st.session_state.page = "roi"; st.rerun()
-        if cols[1].button("📝 Label", use_container_width=True):
-            st.session_state.page = "annotate"; st.rerun()
+
+        st.sidebar.markdown("---")
+        st.sidebar.header("📍 ROI Analysis")
+        if st.sidebar.button("🎯 Draw ROIs"):
+            st.session_state.page = "roi"
+            st.rerun()
+
+        st.sidebar.write(f"Active ROIs: **{len(st.session_state.roi_list)}**")
+
+        if st.sidebar.button("▶ Run ROI Analysis"):
+            if not st.session_state.kin_csv_path:
+                st.sidebar.error("Run 'Analyze Video' first.")
+            elif not st.session_state.roi_list:
+                st.sidebar.error("No ROIs defined.")
+            else:
+                with st.spinner("Analyzing ROIs..."):
+                    res_df, plot_p = run_multi_roi_analysis(
+                        kin_csv=st.session_state.kin_csv_path,
+                        roi_list=st.session_state.roi_list,
+                        fps=30,
+                        out_dir="outputs/roi",
+                    )
+                    st.session_state.roi_result_df = res_df
+                    st.session_state.roi_result_plot = plot_p
+                    st.rerun()
+
+        st.sidebar.markdown("---")
+        st.sidebar.header("🧠 Labeling")
+        if st.sidebar.button("📝 Behavior Annotator"):
+            st.session_state.page = "annotate"
+            st.rerun()
 
 render_sidebar()
+
 if st.session_state.active_project:
     sync_project_data()
     
@@ -307,6 +220,14 @@ if st.session_state.input_video_path:
                 active = st.session_state.active_project
                 proj_out_dir = os.path.join(PROJECTS_ROOT, active, "outputs")
                 os.makedirs(proj_out_dir, exist_ok=True)
+                prefix = Path(st.session_state.original_video_name or v_path).stem
+                if f_pose or f_anal:
+                    _clear_project_cache(
+                        proj_out_dir,
+                        prefix,
+                        clear_pose=f_pose,
+                        clear_analysis=f_anal,
+                    )
 
                 res = run_full_pipeline(
                     v_path, [], dlc_config_path=conf_path, out_dir=proj_out_dir,
@@ -341,17 +262,14 @@ if st.session_state.input_video_path:
         sync_project_data()
         st.markdown("---")
         st.header("📊 Kinematics Dashboard")
-        
-        # ROI 분석 결과가 있다면 상단에 강조
+
         if st.session_state.roi_result_plot:
-            with st.container(border=True):
-                st.subheader("📍 ROI Performance Metrics")
-                ri_c1, ri_c2 = st.columns([3, 2])
-                ri_c1.image(st.session_state.roi_result_plot)
-                ri_c2.dataframe(st.session_state.roi_result_df, use_container_width=True)
+            st.subheader("ROI Analysis")
+            st.image(st.session_state.roi_result_plot)
+            st.dataframe(st.session_state.roi_result_df, use_container_width=True)
 
         # 탭을 이용한 플롯 분류
-        tab1, tab2, tab3 = st.tabs(["📈 Basic Kinematics", "🔄 Turning Analysis", "🎭 Behavior & NOP"])
+        tab1, tab2 = st.tabs(["📈 Basic Kinematics", "🎭 Behavior & NOP"])
         
         with tab1:
             tc1, tc2 = st.columns(2)
@@ -362,17 +280,12 @@ if st.session_state.input_video_path:
         
         with tab2:
             tc1, tc2 = st.columns(2)
-            if st.session_state.turning_rate_plot_path:
-                tc1.image(st.session_state.turning_rate_plot_path, caption="Turning Rate")
-            if st.session_state.trajectory_turning_plot:
-                tc2.image(st.session_state.trajectory_turning_plot, caption="Turning Trajectory")
-        
-        with tab3:
-            tc1, tc2 = st.columns(2)
             if st.session_state.trajectory_behavior:
                 tc1.image(st.session_state.trajectory_behavior, caption="Behavioral Map")
-            if st.session_state.nop_plot:
-                tc2.image(st.session_state.nop_plot, caption="NOP Analysis")
+            if st.session_state.turning_rate_plot_path:
+                tc2.image(st.session_state.turning_rate_plot_path, caption="Turning rate Map")
+            #if st.session_state.nop_plot:
+                #tc2.image(st.session_state.nop_plot, caption="NOP Analysis")
 
         with st.expander("📄 Detailed System Logs"):
             st.code("\n".join(st.session_state.logs))

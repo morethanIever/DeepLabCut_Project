@@ -9,7 +9,7 @@ import plotly.express as px
 
 
 def apply_umap(df):
-    from umap.umap_ import umap  # avoids importing parametric_umap / tensorflow
+    import umap  # avoids importing parametric_umap / tensorflow
     reducer = umap(n_neighbors=15, min_dist=0.1, n_components=2, random_state=42)
     
     # 1. Select only numeric data

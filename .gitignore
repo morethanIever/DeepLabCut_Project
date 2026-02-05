@@ -3,3 +3,6 @@ temp/
 videos/
 *.pyc
 __pychache__/
+assets/
+*.json
+.streamlit

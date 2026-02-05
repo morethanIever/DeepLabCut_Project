@@ -55,7 +55,19 @@ def run_nop_analysis(kin_csv: str, beh_csv: str, out_dir="outputs/nop", roi=None
 
     df = pd.merge(kin, beh, on="frame")
     n = len(df)
-    
+
+    if "nose_x" not in df.columns or "nose_y" not in df.columns:
+        summary_df = pd.DataFrame([
+            {"object": "left",  "total_exploration_time_s": 0.0, "exploration_bouts": 0},
+            {"object": "right", "total_exploration_time_s": 0.0, "exploration_bouts": 0},
+        ])
+        summary_df["NOP_index"] = 0.0
+        summary_df["NOP_ratio"] = 0.0
+        summary_df["delta_time_s"] = 0.0
+        summary_path = os.path.join(out_dir, "nop_summary.csv")
+        summary_df.to_csv(summary_path, index=False)
+        return summary_path
+
     nose_x = df["nose_x"].to_numpy()
     nose_y = df["nose_y"].to_numpy()
     behavior = df["behavior"].to_numpy()

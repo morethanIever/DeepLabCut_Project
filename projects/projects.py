@@ -61,6 +61,24 @@ def _save_profile(projects_root: str, project_name: str, prof: Dict[str, Any]) -
     with open(p, "w", encoding="utf-8") as f:
         json.dump(prof, f, ensure_ascii=False, indent=2)
 
+def _sync_assets_from_config_dir(projects_root: str, project_name: str, config_path: str) -> None:
+    proj_dir = _project_dir(projects_root, project_name)
+    assets_dir = os.path.join(proj_dir, "assets")
+    os.makedirs(assets_dir, exist_ok=True)
+
+    src_dir = os.path.abspath(os.path.dirname(config_path))
+    dst_dir = os.path.abspath(assets_dir)
+    if src_dir == dst_dir:
+        return
+
+    for name in os.listdir(src_dir):
+        src = os.path.join(src_dir, name)
+        dst = os.path.join(dst_dir, name)
+        if os.path.isdir(src):
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dst)
+
 def set_dlc_config(projects_root: str, project_name: str, config_path: str) -> str:
     if not config_path:
         raise ValueError("config_path is empty.")
@@ -71,6 +89,7 @@ def set_dlc_config(projects_root: str, project_name: str, config_path: str) -> s
     prof.setdefault("dlc", {})
     prof["dlc"]["config_path"] = os.path.abspath(config_path)
     _save_profile(projects_root, project_name, prof)
+    _sync_assets_from_config_dir(projects_root, project_name, config_path)
     return prof["dlc"]["config_path"]
 
 def import_dlc_config_file(projects_root: str, project_name: str, uploaded_file) -> str:
@@ -124,3 +143,27 @@ def import_dlc_config_file(projects_root: str, project_name: str, uploaded_file)
     _save_profile(projects_root, project_name, prof)
 
     return prof["dlc"]["config_path"]
+
+def set_project_settings(
+    projects_root: str,
+    project_name: str,
+    *,
+    experiment_type: str | None = None,
+    camera_view: str | None = None,
+) -> Dict[str, Any]:
+    prof = load_profile(projects_root, project_name)
+    prof.setdefault("settings", {})
+    if experiment_type is not None:
+        prof["settings"]["experiment_type"] = experiment_type
+    if camera_view is not None:
+        prof["settings"]["camera_view"] = camera_view
+    _save_profile(projects_root, project_name, prof)
+    return prof["settings"]
+
+def delete_project(projects_root: str, project_name: str) -> None:
+    if not project_name:
+        raise ValueError("Project name is empty.")
+    pdir = _project_dir(projects_root, project_name)
+    if not os.path.exists(pdir):
+        raise FileNotFoundError(f"Project dir not found: {pdir}")
+    shutil.rmtree(pdir)

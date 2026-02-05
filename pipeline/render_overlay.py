@@ -40,31 +40,24 @@ def render_annotated_video(
         )
         cols = pose.loc[:, mask]
         if cols.shape[1] == 0:
-            raise RuntimeError(
-                f"[RENDER] Bodypart '{body}' with coord '{coord}' not found.\n"
-                f"Available bodyparts: {sorted(set(pose.columns.get_level_values(1)))}"
-            )
+            return None
         return cols.iloc[:, 0].to_numpy()
 
-    # Keypoints for Bounding Box and Arrows
-    nose_x = get_xy("nose", "x")
-    nose_y = get_xy("nose", "y")
-    le_x = get_xy("leftEar", "x")
-    le_y = get_xy("leftEar", "y")
-    re_x = get_xy("rightEar", "x")
-    re_y = get_xy("rightEar", "y")
-    sp_x = get_xy("spineUpper", "x")
-    sp_y = get_xy("spineUpper", "y")
-    spMx = get_xy("spineMid", "x")
-    spMy = get_xy("spineMid", "y")
-    spLx = get_xy("spineLower", "x")
-    spLy = get_xy("spineLower", "y")
-    ls_x = get_xy("leftShoulder", "x")
-    ls_y = get_xy("leftShoulder", "y")
-    rs_x = get_xy("rightShoulder", "x")
-    rs_y = get_xy("rightShoulder", "y")
-    tb_x = get_xy("tailBase", "x")
-    tb_y = get_xy("tailBase", "y")
+    # Keypoints for Bounding Box and Arrows (dynamic)
+    available_bodyparts = sorted(set(pose.columns.get_level_values(1)))
+    available_bodyparts = [bp for bp in available_bodyparts if isinstance(bp, str) and bp.lower() not in {"bodyparts", "coords", "scorer"}]
+    
+    keypoints = {}
+    for bp in available_bodyparts:
+        x = get_xy(bp, "x")
+        y = get_xy(bp, "y")
+        l = get_xy(bp, "likelihood")
+        if x is not None and y is not None:
+            keypoints[bp] = {"x": x, "y": y, "likelihood": l}
+    
+    pose_arrays = []
+    for v in keypoints.values():
+        pose_arrays.extend([v["x"], v["y"]])
 
     # ----------------------------
     # Video IO
@@ -88,7 +81,7 @@ def render_annotated_video(
     # Frame alignment
     # ----------------------------
     n_video = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    n_pose = len(nose_x)
+    n_pose = min((len(a) for a in pose_arrays), default=n_video)
     n_kin = len(kin)
     n_beh = len(beh)
     max_frames = min(n_video, n_pose, n_kin, n_beh)
@@ -120,39 +113,42 @@ def render_annotated_video(
             return (new_x, new_y)
         
         # Extract current coordinates
-        pts = {
-            "nose": transform_coords(nose_x[i], nose_y[i]),
-            "le":   transform_coords(le_x[i], le_y[i]),
-            "re":   transform_coords(re_x[i], re_y[i]),
-            "spU":  transform_coords(sp_x[i], sp_y[i]),
-            "spM":  transform_coords(spMx[i], spMy[i]),
-            "spL":  transform_coords(spLx[i], spLy[i]),
-            "ls":   transform_coords(ls_x[i], ls_y[i]),
-            "rs":   transform_coords(rs_x[i], rs_y[i]),
-            "tb":   transform_coords(tb_x[i], tb_y[i])
-        }
+        pts = {}
+        def add_pt(key, xarr, yarr):
+            if xarr is None or yarr is None:
+                return
+            x = xarr[i]
+            y = yarr[i]
+            if np.isnan(x) or np.isnan(y):
+                return
+            pts[key] = transform_coords(x, y)
 
-        raw_pos_x, raw_pos_y = float(kin.loc[i, "spine_x"]), float(kin.loc[i, "spine_y"])
+        for bp, arrs in keypoints.items():
+            add_pt(bp, arrs["x"], arrs["y"])
+        raw_pos_x = float(kin.loc[i, "spine_x"]) if "spine_x" in kin.columns else 0.0
+        raw_pos_y = float(kin.loc[i, "spine_y"]) if "spine_y" in kin.columns else 0.0
         display_pos = transform_coords(raw_pos_x, raw_pos_y)
-        speed = float(kin.loc[i, "speed_px_s"])
-        angle = float(kin.loc[i, "head_angle_deg"])
+        speed = float(kin.loc[i, "speed_px_s"]) if "speed_px_s" in kin.columns else 0.0
+        angle = float(kin.loc[i, "head_angle_deg"]) if "head_angle_deg" in kin.columns else 0.0
 
         # 3. Draw Bounding Box (using already transformed pts)
-        xs = [p[0] for p in pts.values()]
-        ys = [p[1] for p in pts.values()]
-        dynamic_pad = int(15 * scale_x) 
-        
-        xmin, ymin = max(min(xs) - dynamic_pad, 0), max(min(ys) - dynamic_pad, 0)
-        xmax, ymax = min(max(xs) + dynamic_pad, w - 1), min(max(ys) + dynamic_pad, h - 1)
-        cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 255, 0), 2)
+        if pts:
+            xs = [p[0] for p in pts.values()]
+            ys = [p[1] for p in pts.values()]
+            dynamic_pad = int(15 * scale_x) 
+            
+            xmin, ymin = max(min(xs) - dynamic_pad, 0), max(min(ys) - dynamic_pad, 0)
+            xmax, ymax = min(max(xs) + dynamic_pad, w - 1), min(max(ys) + dynamic_pad, h - 1)
+            cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 255, 0), 2)
 
         # 4. Draw Keypoints
         for pt in pts.values():
             cv2.circle(frame, pt, 4, (0, 0, 255), -1)
-        # 3. Draw Head Direction Arrow
-        emx = int((pts["le"][0] + pts["re"][0]) / 2)
-        emy = int((pts["le"][1] + pts["re"][1]) / 2)
-        cv2.arrowedLine(frame, (emx, emy), pts["nose"], (255, 0, 0), 2)
+        # 3. Draw Head Direction Arrow (only if nose + both ears are present)
+        if "leftEar" in pts and "rightEar" in pts and "nose" in pts:
+            emx = int((pts["leftEar"][0] + pts["rightEar"][0]) / 2)
+            emy = int((pts["leftEar"][1] + pts["rightEar"][1]) / 2)
+            cv2.arrowedLine(frame, (emx, emy), pts["nose"], (255, 0, 0), 2)
 
         # 4. Behavioral Label Logic
         """cluster_id = int(ml_feat.loc[i, "visual_cluster"])
@@ -162,9 +158,10 @@ def render_annotated_video(
             behavior_name = f"Cluster {cluster_id}"""
 
         # 5. Extract Kinematic Data
-        pos_x, pos_y = float(kin.loc[i, "spine_x"]), float(kin.loc[i, "spine_y"])
-        speed = float(kin.loc[i, "speed_px_s"])
-        angle = float(kin.loc[i, "head_angle_deg"])
+        pos_x = float(kin.loc[i, "spine_x"]) if "spine_x" in kin.columns else 0.0
+        pos_y = float(kin.loc[i, "spine_y"]) if "spine_y" in kin.columns else 0.0
+        speed = float(kin.loc[i, "speed_px_s"]) if "speed_px_s" in kin.columns else 0.0
+        angle = float(kin.loc[i, "head_angle_deg"]) if "head_angle_deg" in kin.columns else 0.0
 
         # 6. Text Overlays
         cv2.putText(frame, f"Speed: {speed:.1f}px/s", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
