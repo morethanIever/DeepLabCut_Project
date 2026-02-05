@@ -1,0 +1,181 @@
+# Project definitions (do not edit)
+Task: TestBehaviour
+scorer: Eunhye
+date: Dec29
+multianimalproject: false
+identity:
+
+
+# Project path (change when moving around)
+project_path: 
+  C:\Users\leelab\Desktop\DLC_project\DeepLabCut_Project\projects\Project 
+  1\assets
+
+
+# Default DeepLabCut engine to use for shuffle creation (either pytorch or tensorflow)
+engine: tensorflow
+
+
+# Annotation data set configuration (and individual video cropping parameters)
+video_sets:
+  C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\videos\LE609_NOP5m_4.mp4:
+    crop: 0, 1280, 0, 720
+  C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\videos\Test1.mp4:
+    crop: 0, 1280, 0, 720
+  C:\Users\leelab\Desktop\DLC_project\DeepLabCut_Project\videos\Test1.mp4:
+    crop: 0, 1280, 0, 720
+  C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\videos\LE609_NOP1h_4.mp4:
+    crop: 0, 1280, 0, 720
+  C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\videos\LE611_NOP1h_3.mp4:
+    crop: 0, 1280, 0, 720
+  C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\videos\LE611_NOP1h_4 - Trim.mp4:
+    crop: 0, 1280, 0, 720
+bodyparts:
+- nose
+- leftEar
+- rightEar
+- neck
+- spineUpper
+- leftShoulder
+- rightShoulder
+- spineMid
+- spineLower
+- tailBase
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+# Fraction of video to start/stop when extracting frames for labeling/refinement
+start: 0
+stop: 1
+numframes2pick: 200
+
+
+# Plotting configuration
+skeleton:
+- - nose
+  - leftEar
+  - rightEar
+- - neck
+  - spineUpper
+  - spineMid
+  - spineLower
+- - spineUpper
+  - leftShoulder
+- - spineUpper
+  - rightShoulder
+- - spineLower
+  - tailBase
+
+skeleton_color: blue
+pcutoff: 0.9
+dotsize: 12
+alphavalue: 0.7
+colormap: rainbow
+
+
+# Training,Evaluation and Analysis configuration
+TrainingFraction:
+- 0.95
+iteration: 50004
+default_net_type: resnet_50
+default_augmenter: default
+snapshotindex: -1
+detector_snapshotindex: -1
+batch_size: 16
+detector_batch_size: 1
+
+
+# Cropping Parameters (for analysis and outlier frame detection)
+cropping: false
+#if cropping is true for analysis, then set the values here:
+x1: 0
+x2: 640
+y1: 277
+y2: 624
+
+
+# Refinement configuration (parameters from annotation dataset configuration also relevant in this stage)
+corner2move2:
+- 50
+- 50
+move2corner: true
+
+
+# Conversion tables to fine-tune SuperAnimal weights
+SuperAnimalConversionTables:

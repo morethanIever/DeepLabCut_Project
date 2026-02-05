@@ -34,12 +34,14 @@ def classify_behavior(
     logs: list,
     *,
     force: bool = False,
+    out_dir: str = "outputs",
+    cache_key: str | None = None,
 ) -> str:
     """
     Rule-based behavior classification (biologically realistic, top-view).
     """
-    ensure_dirs()
-    beh_cache = cached_beh_path(video_path)
+    ensure_dirs(out_dir)
+    beh_cache = cached_beh_path(video_path, out_dir, cache_key)
 
     # ---------------- Cache ----------------
     if (not force) and os.path.exists(beh_cache):

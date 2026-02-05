@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 
 
-def plot_turning_rate(turn_csv: str) -> str:
+def plot_turning_rate(turn_csv: str, out_dir: str) -> str:
     df = pd.read_csv(turn_csv)
 
     plt.figure(figsize=(7, 3))
@@ -15,8 +15,9 @@ def plot_turning_rate(turn_csv: str) -> str:
     plt.ylabel("deg/s")
     plt.grid(alpha=0.3)
 
-    os.makedirs("outputs/plots", exist_ok=True)
-    out_path = "outputs/plots/turning_rate.png"
+    os.makedirs(out_dir, exist_ok=True)
+    video_stem = os.path.splitext(os.path.basename(turn_csv))[0]
+    out_path = os.path.join(out_dir, f"{video_stem}_turning_rate.png")
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close()
 

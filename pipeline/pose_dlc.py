@@ -6,14 +6,25 @@ import pandas as pd
 from pipeline.cache_utils import ensure_dirs, cached_pose_path
 
 
-def run_deeplabcut_pose(video_path: str, logs: list, *, force: bool = False) -> str:
+def run_deeplabcut_pose(
+    video_path: str,
+    logs: list,
+    *,
+    CONFIG_PATH: str,
+    force: bool = False,
+    out_dir: str = "outputs",
+    cache_key: str | None = None,
+) -> str:
     """
     Run DeepLabCut analysis and return the produced pose CSV path.
     If DLC doesn't export CSV (only H5), convert H5 -> CSV and cache it.
     """
-    ensure_dirs()
+    ensure_dirs(out_dir)
 
-    pose_cache = cached_pose_path(video_path)
+    if not CONFIG_PATH or (not os.path.exists(CONFIG_PATH)):
+        raise RuntimeError(f"[POSE] DLC config.yaml not found: {CONFIG_PATH}")
+
+    pose_cache = cached_pose_path(video_path, out_dir, cache_key)
 
     # Cache hit (unless forced)
     if (not force) and os.path.exists(pose_cache):
@@ -21,8 +32,6 @@ def run_deeplabcut_pose(video_path: str, logs: list, *, force: bool = False) -> 
         return pose_cache
 
     logs.append("[POSE] No cache found. Running DeepLabCut (slow)...")
-
-    CONFIG_PATH = r"C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\config.yaml"
 
     try:
         import deeplabcut
@@ -89,7 +98,7 @@ def run_deeplabcut_pose(video_path: str, logs: list, *, force: bool = False) -> 
     src_h5 = h5_candidates[0]
     logs.append(f"[POSE] CSV missing. Converting H5 → CSV: {src_h5.name}")
 
-    df = pd.read_hdf(str(src_h5))  # DLC stores a DataFrame inside H5
+    df = pd.read_hdf(str(src_h5))
     df.to_csv(pose_cache)
     logs.append(f"[POSE] Pose cached at {pose_cache} (from H5)")
 

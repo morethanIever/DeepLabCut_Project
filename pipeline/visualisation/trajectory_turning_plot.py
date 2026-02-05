@@ -3,16 +3,28 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
+from pipeline.preprocessing.video_size import get_video_size
 
 def plot_trajectory_with_turning_rate(
     kin_csv: str,
     turn_csv: str,
-    arena_size=(1280, 720),
+    out_dir: str,
+    video_path: str | None = None,
+    arena_size: tuple[int, int] | None = None,
     turn_clip=300,     # deg/s (color saturation)
 ) -> str:
     """
     Plot trajectory colored by turning rate.
     """
+
+    if arena_size is None:
+        if video_path is None:
+            raise ValueError("Provide either arena_size or video_path")
+        arena_size = get_video_size(video_path)
+
+    W, H = arena_size
+    fig, ax = plt.subplots(figsize=(5, 5))
+    ax.add_patch(plt.Rectangle((0, 0), W, H, fill=False, linewidth=2))
 
     kin = pd.read_csv(kin_csv)
     turn = pd.read_csv(turn_csv)
@@ -76,8 +88,10 @@ def plot_trajectory_with_turning_rate(
     cbar = plt.colorbar(sc, ax=ax)
     cbar.set_label("Turning rate (deg/s)")
 
-    os.makedirs("outputs/plots", exist_ok=True)
-    out_path = "outputs/plots/trajectory_turning_rate.png"
+    os.makedirs(out_dir, exist_ok=True)
+    video_stem = os.path.splitext(os.path.basename(kin_csv))[0]
+    out_path = os.path.join(out_dir, f"{video_stem}_trajectory_turning_rate.png")
+
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 

@@ -25,13 +25,15 @@ def compute_kinematics(
     video_path: str,
     logs: list,
     *,
-    force: bool = False
+    force: bool = False,
+    out_dir: str = "outputs",
+    cache_key: str | None = None,
 ) -> str:
     """
     Compute kinematics with caching.
     """
-    ensure_dirs()
-    kin_cache = cached_kin_path(video_path)
+    ensure_dirs(out_dir)
+    kin_cache = cached_kin_path(video_path, out_dir, cache_key)
 
     # ----------------------------
     # Cache logic

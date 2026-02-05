@@ -17,6 +17,8 @@ def extract_ml_features(
     include_acceleration: bool = False,
     fps: float | None = None,          # if provided, scale coord velocities to px/s
     include_coord_features: bool = True,
+    out_dir: str = "outputs",
+    cache_key: str | None = None,
 ) -> str:
     """
     RandomForest-friendly ML features.
@@ -26,8 +28,8 @@ def extract_ml_features(
     - Adds coordinate-based features (nose/head/body motion) if enabled
     """
 
-    ensure_dirs()
-    out_path = cached_ml_features(video_path)
+    ensure_dirs(out_dir)
+    out_path = cached_ml_features(video_path, out_dir, cache_key)
 
     if (not force) and os.path.exists(out_path):
         print(f"[ML] Using cached features: {out_path}")

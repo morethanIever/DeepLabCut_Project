@@ -15,7 +15,7 @@ from pipeline.cache_utils import (
 
 from pipeline.visualisation.speed_plot import plot_speed
 from pipeline.visualisation.trajectory_plot import plot_trajectory
-from pipeline.trajectory_behavior import plot_trajectory_by_behavior
+from pipeline.visualisation.trajectory_behavior import plot_trajectory_by_behavior
 from pipeline.kinematics.turning_rate import compute_turning_rate
 from pipeline.visualisation.turning_rate_plot import plot_turning_rate
 from pipeline.visualisation.trajectory_turning_plot import plot_trajectory_with_turning_rate
@@ -28,30 +28,34 @@ from pipeline.render_overlay import render_annotated_video
 from pipeline.ML.ml_features import extract_ml_features
 #from pipeline.ML.umap_plot import save_umap_plot
 
-def save_uploaded_video(uploaded_file) -> str:
-    import shutil
+def _ensure_dir(p: str) -> str:
+    os.makedirs(p, exist_ok=True)
+    return p
 
-    dlc_video_dir = r"C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\videos"
-    os.makedirs(dlc_video_dir, exist_ok=True)
 
-    video_name = uploaded_file.name
-    dlc_video_path = os.path.join(dlc_video_dir, video_name)
+def _copy_to_dir(src_path: str, dst_dir: str, *, dst_name: str | None = None) -> str:
+    _ensure_dir(dst_dir)
+    name = dst_name or os.path.basename(src_path)
+    dst_path = os.path.join(dst_dir, name)
+    if os.path.abspath(src_path) != os.path.abspath(dst_path):
+        shutil.copy(src_path, dst_path)
+    return dst_path
 
-    with open(dlc_video_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
 
-    return dlc_video_path
 
 
 
 def run_full_pipeline(
-    uploaded_file,
+    uploaded_file_or_path,
     logs: list,
     *,
+    dlc_config_path: str,
+    out_dir: str,
     force_pose: bool = False,
     force_analysis: bool = False,
     roi=None,
-    resize_to=None
+    resize_to=None,
+    output_name: str | None = None,
 ):
     """
     Full analysis pipeline with caching.
@@ -61,31 +65,36 @@ def run_full_pipeline(
     force_analysis=True:
         - Recompute kinematics & behavior (FAST)
     """
-    ensure_dirs()
+    ensure_dirs(out_dir)
 
-    dlc_video_dir = r"C:\Users\leelab\Desktop\TestBehaviour-Eunhye-2025-12-29\videos"
-    os.makedirs(dlc_video_dir, exist_ok=True)
+    if not dlc_config_path or not os.path.exists(dlc_config_path):
+        raise RuntimeError(f"DLC config.yaml not found: {dlc_config_path}")
 
+    out_dir = os.path.abspath(out_dir)
+    vid_dir   = _ensure_dir(os.path.join(out_dir, "videos"))
+    plots_dir = _ensure_dir(os.path.join(out_dir, "plots"))
+    nop_dir   = _ensure_dir(os.path.join(out_dir, "nop"))
+    ml_dir    = _ensure_dir(os.path.join(out_dir, "ml"))
+    rend_dir  = _ensure_dir(os.path.join(out_dir, "rendered"))
 
     # ----------------------------
     # 0) Save uploaded video
     # ----------------------------
-    if isinstance(uploaded_file, str):
-        # Video is a path string (likely from temp/ after cropping/enhancing)
-        source_path = uploaded_file
-        video_filename = os.path.basename(source_path)
-        stable_input_path = os.path.join(dlc_video_dir, video_filename)
-        
-        # COPY from temp to permanent DLC folder if it's not already there
-        if os.path.abspath(source_path) != os.path.abspath(stable_input_path):
-            logs.append(f"[WORKFLOW] Moving preprocessed video to stable path: {video_filename}")
-            shutil.copy(source_path, stable_input_path)
-        
-        input_video = stable_input_path
+    if isinstance(uploaded_file_or_path, str):
+        input_video = _copy_to_dir(uploaded_file_or_path, vid_dir, dst_name=output_name)
+        logs.append(f"[WORKFLOW] Using video: {input_video}")
     else:
-        # Fresh upload object from Streamlit
-        input_video = save_uploaded_video(uploaded_file)
-        logs.append(f"[WORKFLOW] Saved fresh upload to: {input_video}")
+        # Streamlit UploadedFile
+        _ensure_dir(vid_dir)
+        input_video = os.path.join(vid_dir, output_name or uploaded_file_or_path.name)
+        with open(input_video, "wb") as f:
+            f.write(uploaded_file_or_path.getbuffer())
+        logs.append(f"[WORKFLOW] Saved upload to: {input_video}")
+
+    # ----------------------------
+    # Cache key (prefer stable name)
+    # ----------------------------
+    cache_key = Path(output_name or input_video).stem
 
     # ----------------------------
     # 1) Pose (DeepLabCut) [SLOW]
@@ -93,7 +102,10 @@ def run_full_pipeline(
     pose_csv = run_deeplabcut_pose(
         input_video,
         logs,
-        force=force_pose
+        CONFIG_PATH=dlc_config_path,
+        force=force_pose,
+        out_dir=out_dir,
+        cache_key=cache_key
     )
     logs.append(f"[OK] Pose CSV: {pose_csv}")
 
@@ -104,7 +116,9 @@ def run_full_pipeline(
         pose_csv,
         input_video,
         logs,
-        force=force_analysis
+        force=force_analysis,
+        out_dir=out_dir,
+        cache_key=cache_key
     )
     logs.append(f"[OK] Kinematics CSV: {kin_csv}")
 
@@ -115,7 +129,9 @@ def run_full_pipeline(
         kin_csv,
         input_video,
         logs,
-        force=force_analysis
+        force=force_analysis,
+        out_dir=out_dir,
+        cache_key=cache_key
     )
     logs.append(f"[OK] Behavior CSV: {beh_csv}")
 
@@ -125,20 +141,24 @@ def run_full_pipeline(
         kin_csv,
         input_video,
         logs,
-        force=force_analysis
+        force=force_analysis,
+        out_dir=out_dir,
+        cache_key=cache_key
     )
     
     logs.append(f"[OK] Turning rate CSV: {turn_csv}")
+
     scale = None
     if roi is not None and resize_to is not None:
         crop_w, crop_h = roi[2], roi[3]
         new_w, new_h = resize_to
         scale = (new_w / crop_w, new_h / crop_h)
+        
     # nop analysis
     nop_summary_csv = run_nop_analysis(
         kin_csv,
         beh_csv,
-        out_dir="outputs/nop",
+        out_dir=nop_dir,
         roi=roi,
         scale=scale
     )
@@ -159,7 +179,9 @@ def run_full_pipeline(
     ml_feat_csv = extract_ml_features(
         kin_csv,
         input_video,
-        force=force_analysis
+        force=force_analysis,
+        out_dir=out_dir,
+        cache_key=cache_key
     )
     """df_ml = pd.read_csv(ml_feat_csv)
     
@@ -179,9 +201,10 @@ def run_full_pipeline(
     df_ml.to_csv(ml_feat_csv, index=False)
 
     logs.append(f"[OK] Behavioral clusters saved to: {ml_feat_csv}")"""
-    out_video = cached_outvideo_path(input_video)
-
-    ALL_VIDEO_MAPS = {
+    out_video = os.path.join(rend_dir, f"{Path(input_video).stem}_annotated.mp4")
+    
+    
+    """ALL_VIDEO_MAPS = {
         'fad92c0398211bcb9c0ef182e0fe65cb': {0: 'Fast move', 1: 'Slow Sniffing', 2: 'Move', 3: 'Rest', 4: 'Grooming', 5: 'Active Sniffing', 6: 'Turning', 7: 'Rearing'},
         'bf57b37b35cd86006f143dbf36d41402': {0: 'Move', 1: 'Grooming', 2: 'Turning', 3: 'Rearing', 4: 'Fast Move', 5: 'Sniffing', 6: 'Fast Move', 7: 'Rest'},
         'e8c9ec435e1183ddfd78181e05ecfac1': {0: 'Rest', 1: 'Turning', 2: 'Sniffing', 3: 'Rearing', 4: 'Grooming', 5: 'Fast Move', 6: 'Move', 7: 'Fast Move'},
@@ -197,7 +220,7 @@ def run_full_pipeline(
         logs.append(f"[RENDER] Found verified map for {video_id}")
     else:
         logs.append(f"[WARNING] No verified map found for {video_id}. Showing raw Cluster IDs.")
-    
+    """
     out_video = render_annotated_video(
         input_video=input_video,
         pose_csv=pose_csv,
@@ -206,16 +229,16 @@ def run_full_pipeline(
         ml_feat_csv=ml_feat_csv,
         logs=logs,
         out_path=out_video, # Uses the path determined by cache_utils
-        label_map=current_map,
+        #label_map=current_map,
         roi=None
     )
 
 
-    speed_plot = plot_speed(kin_csv)
-    trajectory_plot = plot_trajectory(kin_csv)
-    trajectory_behavior = plot_trajectory_by_behavior(kin_csv, beh_csv)
-    turning_rate_plot_path = plot_turning_rate(turn_csv)
-    trajectory_turning_plot = plot_trajectory_with_turning_rate(kin_csv, turn_csv)
+    speed_plot = plot_speed(kin_csv, out_dir=plots_dir) if "out_dir" in plot_speed.__code__.co_varnames else plot_speed(kin_csv)
+    trajectory_plot = plot_trajectory(kin_csv, out_dir=plots_dir) if "out_dir" in plot_trajectory.__code__.co_varnames else plot_trajectory(kin_csv)
+    trajectory_behavior = plot_trajectory_by_behavior(kin_csv, beh_csv, out_dir=plots_dir)  # 필요시 out_dir 적용
+    turning_rate_plot_path = plot_turning_rate(turn_csv, out_dir=plots_dir)                # 필요시 out_dir 적용
+    trajectory_turning_plot = plot_trajectory_with_turning_rate(kin_csv, turn_csv, out_dir=plots_dir, video_path=input_video)
     nop_plot = nop_plot_path
     
     logs.append(f"[PLOT] Speed plot saved: {speed_plot}")

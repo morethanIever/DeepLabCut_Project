@@ -5,7 +5,7 @@ import os
 from matplotlib.lines import Line2D
 
 
-def plot_trajectory_by_behavior(kin_csv: str, beh_csv: str) -> str:
+def plot_trajectory_by_behavior(kin_csv: str, beh_csv: str, out_dir:str) -> str:
     # ----------------------------
     # Load & align data
     # ----------------------------
@@ -99,8 +99,9 @@ def plot_trajectory_by_behavior(kin_csv: str, beh_csv: str) -> str:
     # ----------------------------
     # Save
     # ----------------------------
-    os.makedirs("outputs/plots", exist_ok=True)
-    out_path = "outputs/plots/trajectory_behavior.png"
+    os.makedirs(out_dir, exist_ok=True)
+    video_stem = os.path.splitext(os.path.basename(kin_csv))[0]
+    out_path = os.path.join(out_dir, f"{video_stem}_trajectory_behavior.png")
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
