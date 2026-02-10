@@ -41,10 +41,24 @@ def _rerun():
     else:
         st.experimental_rerun()
 
-def _get_preprocess_signature():
+def _get_preprocess_signature(video_path: str | None = None):
+    resize_to = st.session_state.resize_to
+    v_path = video_path or st.session_state.input_video_path
+    if resize_to and v_path:
+        try:
+            cur_size = get_video_size(v_path)
+        except Exception:
+            cur_size = None
+        if cur_size:
+            try:
+                rt = tuple(resize_to)
+            except Exception:
+                rt = resize_to
+            if rt == tuple(cur_size):
+                resize_to = None
     return {
         "crop_roi": st.session_state.crop_roi,
-        "resize_to": st.session_state.resize_to,
+        "resize_to": resize_to,
         "clahe_clip": st.session_state.get("clahe_clip"),
     }
 
@@ -55,7 +69,7 @@ def _check_reference_and_warn(active_project: str, video_path: str) -> bool:
         current_size = None
     current = {
         "video_size": list(current_size) if current_size else None,
-        "preprocess": _get_preprocess_signature(),
+        "preprocess": _get_preprocess_signature(video_path),
     }
     ref = get_dlc_reference(PROJECTS_ROOT, active_project)
     if not ref:
@@ -228,7 +242,15 @@ if st.session_state.input_video_path:
             if st.button("Downsample"):
                 out = os.path.abspath(f"temp/down_{os.path.basename(v_path)}")
                 apply_downsample(v_path, out, tw, th)
-                st.session_state.input_video_path, st.session_state.resize_to = out, (tw, th)
+                st.session_state.input_video_path = out
+                try:
+                    cur_w, cur_h = get_video_size(v_path)
+                except Exception:
+                    cur_w, cur_h = None, None
+                if cur_w is not None and cur_h is not None and (tw, th) == (cur_w, cur_h):
+                    st.session_state.resize_to = None
+                else:
+                    st.session_state.resize_to = (tw, th)
                 _rerun()
 
         with c4:
@@ -255,6 +277,7 @@ if st.session_state.input_video_path:
             f_anal = st.checkbox("Force Re-run Kinematics")
             conf_path = st.session_state.active_profile.get("dlc", {}).get("config_path") if st.session_state.active_profile else None
             simba_conf_path = st.session_state.active_profile.get("simba", {}).get("config_path") if st.session_state.active_profile else None
+            prefix = Path(st.session_state.original_video_name or v_path).stem
             
             if st.button("🔧 DLC: Extract Outliers"):
                 if conf_path:
@@ -354,8 +377,59 @@ if st.session_state.input_video_path:
                                 pass
                         _rerun()
 
+        with st.expander("Behavior / Kinematics Options"):
+            behavior_choice = st.selectbox(
+                "Behavior Mode",
+                [
+                    "A: Kinematics only (skip behavior)",
+                    "B: Auto behavior (rule-based)",
+                    "C: Manual labeling only (no auto behavior)",
+                ],
+                index=0,
+                key="behavior_mode_select",
+            )
+            behavior_mode = {
+                "A: Kinematics only (skip behavior)": "skip",
+                "B: Auto behavior (rule-based)": "auto",
+                "C: Manual labeling only (no auto behavior)": "manual",
+            }[behavior_choice]
+        
+            kin_source = st.radio(
+                "Kinematics Source",
+                ["Use DLC pose CSV (default)", "Use SimBA filtered CSV"],
+                index=0,
+                key="kin_source_radio",
+            )
+            kinematics_csv = None
+            if kin_source == "Use SimBA filtered CSV":
+                candidates = []
+                active = st.session_state.active_project
+                if active:
+                    simba_root = os.path.join(PROJECTS_ROOT, active, "simba", "project_folder", "csv")
+                    for d in ["outlier_corrected_movement_location", "features_extracted"]:
+                        pattern = os.path.join(simba_root, d, f"*{prefix}*.csv")
+                        candidates.extend(glob.glob(pattern))
+                candidates = sorted(set(candidates))
+                selected = st.selectbox(
+                    "Select SimBA filtered CSV",
+                    options=["(manual path)"] + candidates,
+                    index=0,
+                    key="kin_csv_select",
+                )
+                if selected == "(manual path)":
+                    kinematics_csv = st.text_input(
+                        "SimBA CSV Path",
+                        value="",
+                        key="kin_csv_manual",
+                    ).strip() or None
+                else:
+                    kinematics_csv = selected
+        
         if st.button("🚀 RUN FULL PIPELINE"):
             if not conf_path: st.error("DLC Config path is missing!"); st.stop()
+            if kin_source == "Use SimBA filtered CSV" and not kinematics_csv:
+                st.error("Select a SimBA filtered CSV (or enter a path) before running.")
+                st.stop()
             if not _check_reference_and_warn(st.session_state.active_project, v_path):
                 st.stop()
             with st.spinner("Processing... This may take a few minutes."):
@@ -396,6 +470,9 @@ if st.session_state.input_video_path:
                         roi=st.session_state.crop_roi, resize_to=st.session_state.resize_to,
                         output_name=st.session_state.original_video_name,
                         dlc_log_callback=_dlc_log,
+                        behavior_mode=behavior_mode,
+                        kinematics_csv=kinematics_csv,
+                        project_name=active,
                     )
                 except Exception as e:
                     st.error(f"Pipeline failed: {e}")
@@ -452,11 +529,11 @@ if st.session_state.input_video_path:
         if st.session_state.trajectory_plot and os.path.exists(st.session_state.trajectory_plot):
             tc2.image(st.session_state.trajectory_plot, caption="Full Trajectory")
 
-        st.subheader("🎭 Behavior & NOP")
+        st.subheader("🎭 Behavior")
         tc1, tc2 = st.columns(2)
-        if st.session_state.trajectory_behavior:
+        if st.session_state.trajectory_behavior and os.path.exists(st.session_state.trajectory_behavior):
             tc1.image(st.session_state.trajectory_behavior, caption="Behavioral Map")
-        if st.session_state.turning_rate_plot_path:
+        if st.session_state.turning_rate_plot_path and os.path.exists(st.session_state.turning_rate_plot_path):
             tc2.image(st.session_state.turning_rate_plot_path, caption="Turning rate Map")
         #if st.session_state.nop_plot:
             #tc2.image(st.session_state.nop_plot, caption="NOP Analysis")

@@ -7,7 +7,7 @@ def render_annotated_video(
     input_video: str,
     pose_csv: str,
     kin_csv: str,
-    beh_csv: str,
+    beh_csv: str | None,
     ml_feat_csv: str,
     logs: list,
     *,
@@ -28,7 +28,9 @@ def render_annotated_video(
     # DLC CSVs usually have a 3-level multi-index header
     pose = pd.read_csv(pose_csv, header=[0, 1, 2])
     kin = pd.read_csv(kin_csv)
-    beh = pd.read_csv(beh_csv)
+    beh = None
+    if beh_csv and os.path.exists(beh_csv):
+        beh = pd.read_csv(beh_csv)
     ml_feat = pd.read_csv(ml_feat_csv)
 
     # ----------------------------
@@ -84,7 +86,7 @@ def render_annotated_video(
     n_video = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     n_pose = min((len(a) for a in pose_arrays), default=n_video)
     n_kin = len(kin)
-    n_beh = len(beh)
+    n_beh = len(beh) if beh is not None else n_kin
     max_frames = min(n_video, n_pose, n_kin, n_beh)
 
     logs.append(

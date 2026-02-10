@@ -27,6 +27,39 @@ def get_xy(df, body, coord):
     return cols.iloc[:, 0].to_numpy()
 
 
+def _is_dlc_multiheader_csv(path: str) -> bool:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = [f.readline() for _ in range(3)]
+    except Exception:
+        return False
+    lower = [l.lower() for l in lines if l]
+    return any("scorer" in l for l in lower) or any("bodyparts" in l for l in lower) or any("coords" in l for l in lower)
+
+
+def _flat_bodyparts(df: pd.DataFrame) -> List[str]:
+    parts = set()
+    for c in df.columns:
+        if not isinstance(c, str):
+            continue
+        if c.endswith("_x") or c.endswith("_y"):
+            parts.add(c[:-2])
+    return sorted(parts)
+
+
+def _get_xy_flat(df: pd.DataFrame, body: str, coord: str) -> Optional[np.ndarray]:
+    if not body:
+        return None
+    col = f"{body}_{coord}"
+    if col in df.columns:
+        return df[col].to_numpy()
+    lower_map = {c.lower(): c for c in df.columns if isinstance(c, str)}
+    col_lower = col.lower()
+    if col_lower in lower_map:
+        return df[lower_map[col_lower]].to_numpy()
+    return None
+
+
 def _load_alias_map() -> dict:
     """
     Load alias map from kinematics.yaml.
@@ -111,11 +144,19 @@ def compute_kinematics(
 
     logs.append("[KIN] Computing kinematics (fast)...")
 
-    df = pd.read_csv(pose_csv, header=[0, 1, 2])
+    if _is_dlc_multiheader_csv(pose_csv):
+        df = pd.read_csv(pose_csv, header=[0, 1, 2])
+        multi = True
+    else:
+        df = pd.read_csv(pose_csv)
+        multi = False
     n = len(df)
 
-    bodyparts = sorted(set(df.columns.get_level_values(1)))
-    bodyparts = [bp for bp in bodyparts if isinstance(bp, str) and bp.lower() not in {"bodyparts", "coords", "scorer"}]
+    if multi:
+        bodyparts = sorted(set(df.columns.get_level_values(1)))
+        bodyparts = [bp for bp in bodyparts if isinstance(bp, str) and bp.lower() not in {"bodyparts", "coords", "scorer"}]
+    else:
+        bodyparts = _flat_bodyparts(df)
     alias_map = _load_alias_map()
     project_map = _load_project_mapping(mapping_path)
 
@@ -142,7 +183,12 @@ def compute_kinematics(
     def coord_or_nan(bp: Optional[str], coord: str) -> np.ndarray:
         if (not bp) or (bp not in bodyparts):
             return np.full(n, np.nan)
-        return get_xy(df, bp, coord)
+        if multi:
+            return get_xy(df, bp, coord)
+        arr = _get_xy_flat(df, bp, coord)
+        if arr is None:
+            return np.full(n, np.nan)
+        return arr
 
 
     # Pick a center bodypart for motion if spine is missing
