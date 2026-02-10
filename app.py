@@ -8,8 +8,7 @@ from typing import List
 
 # 가상의 라이브러리 (사용자 환경에 맞춰 임포트)
 from projects.projects import (
-    list_projects, create_project, load_profile, set_dlc_config, import_dlc_config_file,
-    get_dlc_reference, set_dlc_reference
+    list_projects, create_project, load_profile, set_dlc_config, import_dlc_config_file, set_dlc_reference
 )
 from pipeline.run_pipeline import run_full_pipeline
 from pipeline.simba_backend import run_simba_pipeline
@@ -62,26 +61,6 @@ def _get_preprocess_signature(video_path: str | None = None):
         "clahe_clip": st.session_state.get("clahe_clip"),
     }
 
-def _check_reference_and_warn(active_project: str, video_path: str) -> bool:
-    try:
-        current_size = get_video_size(video_path)
-    except Exception:
-        current_size = None
-    current = {
-        "video_size": list(current_size) if current_size else None,
-        "preprocess": _get_preprocess_signature(video_path),
-    }
-    ref = get_dlc_reference(PROJECTS_ROOT, active_project)
-    if not ref:
-        return True
-    if ref == current:
-        return True
-    st.warning(
-        "This video/preprocessing differs from the reference used to train the model. "
-        "This can reduce accuracy or cause failures."
-    )
-    st.code(f"Reference: {ref}\nCurrent:   {current}")
-    return st.checkbox("Proceed anyway", value=False, key=f"proceed_mismatch_{active_project}")
 
 def _delete_files(paths: List[str]) -> None:
     for p in paths:
@@ -319,8 +298,6 @@ if st.session_state.input_video_path:
                 elif not conf_path:
                     st.error("DLC Config path is missing!")
                 else:
-                    if not _check_reference_and_warn(st.session_state.active_project, v_path):
-                        st.stop()
                     with st.spinner("Running SimBA inference..."):
                         logs = []
                         active = st.session_state.active_project
@@ -366,72 +343,10 @@ if st.session_state.input_video_path:
                         st.session_state.logs = logs
                         st.session_state.simba_machine_csv = simba_results.get("simba_machine_csv")
                         st.session_state.simba_overlay_video = simba_results.get("simba_overlay_video")
-                        if not get_dlc_reference(PROJECTS_ROOT, active):
-                            try:
-                                ref = {
-                                    "video_size": list(get_video_size(v_path)),
-                                    "preprocess": _get_preprocess_signature(),
-                                }
-                                set_dlc_reference(PROJECTS_ROOT, active, ref)
-                            except Exception:
-                                pass
                         _rerun()
-
-        with st.expander("Behavior / Kinematics Options"):
-            behavior_choice = st.selectbox(
-                "Behavior Mode",
-                [
-                    "A: Kinematics only (skip behavior)",
-                    "B: Auto behavior (rule-based)",
-                    "C: Manual labeling only (no auto behavior)",
-                ],
-                index=0,
-                key="behavior_mode_select",
-            )
-            behavior_mode = {
-                "A: Kinematics only (skip behavior)": "skip",
-                "B: Auto behavior (rule-based)": "auto",
-                "C: Manual labeling only (no auto behavior)": "manual",
-            }[behavior_choice]
-        
-            kin_source = st.radio(
-                "Kinematics Source",
-                ["Use DLC pose CSV (default)", "Use SimBA filtered CSV"],
-                index=0,
-                key="kin_source_radio",
-            )
-            kinematics_csv = None
-            if kin_source == "Use SimBA filtered CSV":
-                candidates = []
-                active = st.session_state.active_project
-                if active:
-                    simba_root = os.path.join(PROJECTS_ROOT, active, "simba", "project_folder", "csv")
-                    for d in ["outlier_corrected_movement_location", "features_extracted"]:
-                        pattern = os.path.join(simba_root, d, f"*{prefix}*.csv")
-                        candidates.extend(glob.glob(pattern))
-                candidates = sorted(set(candidates))
-                selected = st.selectbox(
-                    "Select SimBA filtered CSV",
-                    options=["(manual path)"] + candidates,
-                    index=0,
-                    key="kin_csv_select",
-                )
-                if selected == "(manual path)":
-                    kinematics_csv = st.text_input(
-                        "SimBA CSV Path",
-                        value="",
-                        key="kin_csv_manual",
-                    ).strip() or None
-                else:
-                    kinematics_csv = selected
         
         if st.button("🚀 RUN FULL PIPELINE"):
             if not conf_path: st.error("DLC Config path is missing!"); st.stop()
-            if kin_source == "Use SimBA filtered CSV" and not kinematics_csv:
-                st.error("Select a SimBA filtered CSV (or enter a path) before running.")
-                st.stop()
-            if not _check_reference_and_warn(st.session_state.active_project, v_path):
-                st.stop()
             with st.spinner("Processing... This may take a few minutes."):
                 active = st.session_state.active_project
                 proj_out_dir = os.path.join(PROJECTS_ROOT, active, "outputs")
@@ -470,9 +385,6 @@ if st.session_state.input_video_path:
                         roi=st.session_state.crop_roi, resize_to=st.session_state.resize_to,
                         output_name=st.session_state.original_video_name,
                         dlc_log_callback=_dlc_log,
-                        behavior_mode=behavior_mode,
-                        kinematics_csv=kinematics_csv,
-                        project_name=active,
                     )
                 except Exception as e:
                     st.error(f"Pipeline failed: {e}")
@@ -488,15 +400,7 @@ if st.session_state.input_video_path:
                 st.session_state.logs = res.get("logs", [])
                 st.session_state.simba_machine_csv = res.get("simba_machine_csv")
                 st.session_state.simba_overlay_video = res.get("simba_overlay_video")
-                if not get_dlc_reference(PROJECTS_ROOT, active):
-                    try:
-                        ref = {
-                            "video_size": list(get_video_size(v_path)),
-                            "preprocess": _get_preprocess_signature(),
-                        }
-                        set_dlc_reference(PROJECTS_ROOT, active, ref)
-                    except Exception:
-                        pass
+                
                 for k in ["speed_plot", "trajectory_plot", "trajectory_behavior", "turning_rate_plot_path", "trajectory_turning_plot", "nop_plot"]:
                     st.session_state[k] = res.get(k)
                 _rerun()

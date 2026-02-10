@@ -1,6 +1,7 @@
 # pipeline/pose_dlc.py
 import os
 import subprocess
+import time
 from pathlib import Path
 import pandas as pd
 from typing import Optional
@@ -28,6 +29,20 @@ def _get_conda_exe() -> str:
         "conda executable not found. Set CONDA_EXE or install Anaconda/Miniconda."
     )
 
+def _get_dlc_python_exe() -> Optional[str]:
+    """
+    Prefer a direct Python executable for the DLC env to avoid conda run hangs.
+    Supports env var DLC_PYTHON_EXE and typical dlc_gpu path.
+    """
+    direct = os.environ.get("DLC_PYTHON_EXE", "").strip()
+    if direct and os.path.exists(direct):
+        return direct
+    # default dlc_gpu path (Windows)
+    default = r"C:\Users\leelab\anaconda3\envs\dlc_gpu\python.exe"
+    if os.path.exists(default):
+        return default
+    return None
+
 
 def _run_dlc_external(
     *,
@@ -45,35 +60,59 @@ def _run_dlc_external(
     conda_exe = _get_conda_exe()
     project_root = str(_get_project_root())
 
-    cmd = [
-        conda_exe,
-        "run",
-        "-n",
-        env_name,
-        "python",
-        "-u",
-        "-m",
-        "pipeline.dlc_worker",
-        "--action",
-        action,
-        "--config",
-        config_path,
-        "--video",
-        video_path,
-        "--destfolder",
-        destfolder,
-        "--batchsize",
-        str(batchsize),
-    ]
+    dlc_py = _get_dlc_python_exe()
+    if dlc_py:
+        cmd = [
+            dlc_py,
+            "-u",
+            "-m",
+            "pipeline.dlc_worker",
+            "--action",
+            action,
+            "--config",
+            config_path,
+            "--video",
+            video_path,
+            "--destfolder",
+            destfolder,
+            "--batchsize",
+            str(batchsize),
+        ]
+        logs.append(f"[DLC] Using direct python: {dlc_py}")
+        if log_callback:
+            log_callback(f"[DLC] Using direct python: {dlc_py}")
+    else:
+        cmd = [
+            conda_exe,
+            "run",
+            "-n",
+            env_name,
+            "python",
+            "-u",
+            "-m",
+            "pipeline.dlc_worker",
+            "--action",
+            action,
+            "--config",
+            config_path,
+            "--video",
+            video_path,
+            "--destfolder",
+            destfolder,
+            "--batchsize",
+            str(batchsize),
+        ]
     if save_as_csv:
         cmd.append("--save-as-csv")
     if shuffle is not None:
         cmd.extend(["--shuffle", str(shuffle)])
 
-    logs.append(f"[DLC] Using external env '{env_name}' via conda run.")
+    if not dlc_py:
+        logs.append(f"[DLC] Using external env '{env_name}' via conda run.")
+        if log_callback:
+            log_callback(f"[DLC] Using external env '{env_name}' via conda run.")
     logs.append(f"[DLC] Command: {' '.join(cmd)}")
     if log_callback:
-        log_callback(f"[DLC] Using external env '{env_name}' via conda run.")
         log_callback(f"[DLC] Command: {' '.join(cmd)}")
 
     env = os.environ.copy()
@@ -87,7 +126,30 @@ def _run_dlc_external(
         env=env,
         bufsize=1,
     )
+    import threading
     output_lines = []
+    last_output = {"t": time.time()}
+
+    def _heartbeat():
+        while proc.poll() is None:
+            time.sleep(15)
+            idle = time.time() - last_output["t"]
+            msg = f"[DLC] Still running... ({idle:.0f}s since last output)"
+            logs.append(msg)
+            if log_callback:
+                try:
+                    log_callback(msg)
+                except Exception:
+                    pass
+
+    hb = threading.Thread(target=_heartbeat, daemon=True)
+    try:
+        from streamlit.runtime.scriptrunner import add_script_run_ctx
+        add_script_run_ctx(hb)
+    except Exception:
+        pass
+    hb.start()
+
     if proc.stdout:
         for line in proc.stdout:
             line = line.rstrip()
@@ -95,6 +157,7 @@ def _run_dlc_external(
                 continue
             output_lines.append(line)
             logs.append(line)
+            last_output["t"] = time.time()
             if log_callback:
                 log_callback(line)
     ret = proc.wait()

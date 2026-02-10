@@ -1,5 +1,7 @@
 import argparse
 import os
+import time
+import threading
 from pathlib import Path
 
 
@@ -22,12 +24,33 @@ def main() -> int:
     video_p = Path(args.video).resolve()
     video_dir = video_p.parent
     destfolder = Path(args.destfolder).resolve()
+    stem = video_p.stem
 
-    print(f"[DLC WORKER] Action={args.action} Video={video_p} Dest={destfolder}")
+    print(f"[DLC WORKER] Action={args.action} Video={video_p} Dest={destfolder}", flush=True)
     cwd = os.getcwd()
     try:
         os.chdir(str(video_dir))
         if args.action == "analyze":
+            stop_event = threading.Event()
+
+            def _progress_monitor():
+                start = time.time()
+                while not stop_event.is_set():
+                    time.sleep(10)
+                    elapsed = time.time() - start
+                    try:
+                        candidates = list(destfolder.glob(f"*{stem}*"))
+                        if candidates:
+                            latest = max(candidates, key=lambda p: p.stat().st_mtime)
+                            size_mb = latest.stat().st_size / (1024 * 1024)
+                            print(f"[DLC WORKER] Progress: {elapsed:.1f}s latest={latest.name} size={size_mb:.1f}MB", flush=True)
+                        else:
+                            print(f"[DLC WORKER] Progress: {elapsed:.1f}s (no output yet)", flush=True)
+                    except Exception:
+                        print(f"[DLC WORKER] Progress: {elapsed:.1f}s (monitor error)", flush=True)
+
+            monitor_thread = threading.Thread(target=_progress_monitor, daemon=True)
+            monitor_thread.start()
             kwargs = dict(
                 save_as_csv=bool(args.save_as_csv),
                 batchsize=int(args.batchsize),
@@ -40,6 +63,8 @@ def main() -> int:
                 [str(video_p)],
                 **kwargs,
             )
+            stop_event.set()
+            monitor_thread.join(timeout=1)
         elif args.action == "filter":
             deeplabcut.filterpredictions(
                 args.config,

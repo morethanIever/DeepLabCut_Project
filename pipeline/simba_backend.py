@@ -237,7 +237,14 @@ def run_simba_pipeline(
     # Ensure SimBA output dirs exist
     os.makedirs(os.path.join(project_dir, "csv", "machine_results"), exist_ok=True)
 
-    staging_dir = _ensure_dir(os.path.join(out_dir, "simba", "staging"))
+    staging_root = _ensure_dir(os.path.join(out_dir, "simba", "staging"))
+    staging_dir = _ensure_dir(os.path.join(staging_root, stem))
+    # ensure staging dir is clean to avoid importing unrelated CSVs
+    for p in glob.glob(os.path.join(staging_dir, "*.csv")):
+        try:
+            os.remove(p)
+        except Exception:
+            pass
     staged_pose = _stage_pose_csv(pose_csv, staging_dir, stem=stem)
 
     if force:
