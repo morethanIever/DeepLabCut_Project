@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from typing import Optional, Tuple
 
 from pipeline.preprocessing.video_size import get_video_size
 
@@ -9,8 +10,8 @@ def plot_trajectory_with_turning_rate(
     kin_csv: str,
     turn_csv: str,
     out_dir: str,
-    video_path: str | None = None,
-    arena_size: tuple[int, int] | None = None,
+    video_path: Optional[str] = None,
+    arena_size: Optional[Tuple[int, int]] = None,
     turn_clip=300,     # deg/s (color saturation)
 ) -> str:
     """

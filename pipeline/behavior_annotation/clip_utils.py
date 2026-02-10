@@ -40,7 +40,12 @@ def save_video_clip_ffmpeg(video_path, start_frame, end_frame, out_path, fps=30.
         out_path
     ]
 
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    p = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
     if p.returncode != 0:
         raise RuntimeError(f"ffmpeg failed:\n{p.stderr}\nCMD: {' '.join(cmd)}")
 

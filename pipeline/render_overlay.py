@@ -13,7 +13,8 @@ def render_annotated_video(
     *,
     out_path: str,
     label_map=None,
-    roi=None
+    roi=None,
+    pcutoff: float | None = None,
 ) -> str:
     """
     Render annotated video (bbox, head direction, speed, behavior).
@@ -114,17 +115,23 @@ def render_annotated_video(
         
         # Extract current coordinates
         pts = {}
-        def add_pt(key, xarr, yarr):
+        def add_pt(key, xarr, yarr, larr):
             if xarr is None or yarr is None:
                 return
             x = xarr[i]
             y = yarr[i]
+            if larr is not None and pcutoff is not None:
+                try:
+                    if float(larr[i]) < pcutoff:
+                        return
+                except Exception:
+                    pass
             if np.isnan(x) or np.isnan(y):
                 return
             pts[key] = transform_coords(x, y)
 
         for bp, arrs in keypoints.items():
-            add_pt(bp, arrs["x"], arrs["y"])
+            add_pt(bp, arrs["x"], arrs["y"], arrs.get("likelihood"))
         raw_pos_x = float(kin.loc[i, "spine_x"]) if "spine_x" in kin.columns else 0.0
         raw_pos_y = float(kin.loc[i, "spine_y"]) if "spine_y" in kin.columns else 0.0
         display_pos = transform_coords(raw_pos_x, raw_pos_y)

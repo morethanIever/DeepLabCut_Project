@@ -5,6 +5,7 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+from typing import List
 
 DEFAULT_BEHAVIORS = ["sniffing", "grooming", "rearing", "turning", "moving", "rest", "fast_moving", "other"]
 
@@ -19,7 +20,7 @@ def load_clips(ann_csv: str) -> pd.DataFrame:
     ann["label"] = ann["label"].astype(str)
     return ann
 
-def _normalize_label(label: str, behaviors: list[str]) -> str:
+def _normalize_label(label: str, behaviors: List[str]) -> str:
     if label in behaviors:
         return label
     return "other" if "other" in behaviors else behaviors[0]
@@ -29,7 +30,7 @@ def overwrite_labels_inplace(
     relabel_csv: str,
     out_csv: str,
     *,
-    behaviors: list[str],
+    behaviors: List[str],
     boundary_exclude: int = 3,
     tie_break: str = "last",  # outlier relabel은 "마지막 것이 정답"이 일반적으로 자연스러움
     update_train_mask: bool = True,

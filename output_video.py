@@ -1,12 +1,13 @@
 import os
 import subprocess
+from typing import Optional
 
 FFMPEG = os.environ.get(
     "FFMPEG_PATH",
     r"C:\ffmpeg-7.1.1-essentials_build\bin\ffmpeg.exe"
 )
 
-def make_streamlit_playable_mp4(in_path: str, out_path: str, fps: float | None = None):
+def make_streamlit_playable_mp4(in_path: str, out_path: str, fps: Optional[float] = None):
     in_path = os.path.abspath(in_path)
     out_path = os.path.abspath(out_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -35,7 +36,12 @@ def make_streamlit_playable_mp4(in_path: str, out_path: str, fps: float | None =
         tmp_out
     ]
 
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    p = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
     if p.returncode != 0:
         raise RuntimeError(f"ffmpeg failed:\n{p.stderr}\nCMD: {' '.join(cmd)}")
 

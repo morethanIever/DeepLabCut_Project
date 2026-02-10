@@ -180,6 +180,7 @@ sphinxcontrib-serializinghtml==2.0.0
 stack-data==0.6.3
 statsmodels==0.14.6
 streamlit==1.52.2
+streamlit-keypress==0.1.0
 superqt==0.7.6
 sympy==1.14.0
 tables==3.10.1

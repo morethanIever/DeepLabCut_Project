@@ -2,6 +2,7 @@
 import os
 import numpy as np
 import pandas as pd
+from typing import Optional
 from pipeline.cache_utils import ensure_dirs, cached_beh_path
 
 
@@ -35,7 +36,7 @@ def classify_behavior(
     *,
     force: bool = False,
     out_dir: str = "outputs",
-    cache_key: str | None = None,
+    cache_key: Optional[str] = None,
 ) -> str:
     """
     Rule-based behavior classification (biologically realistic, top-view).

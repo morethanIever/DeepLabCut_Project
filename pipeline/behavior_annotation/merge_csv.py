@@ -2,6 +2,7 @@
 import os
 import numpy as np
 import pandas as pd
+from typing import Optional, List
 
 DEFAULT_BEHAVIORS = ["sniffing", "grooming", "rearing", "turning", "moving", "rest", "fast_moving", "other"]
 
@@ -9,7 +10,7 @@ def build_frame_labels_from_clips_df(
     ann_df: pd.DataFrame,
     n_frames: int,
     *,
-    behaviors: list[str] | None = None,
+    behaviors: Optional[List[str]] = None,
     mode: str = "onehot",   # "onehot" or "label"
     default_label: str = "none",
     boundary_exclude: int = 0,
@@ -79,7 +80,7 @@ def merge_labels_into_ml_features_df(
     feats_df: pd.DataFrame,
     ann_df: pd.DataFrame,
     *,
-    behaviors: list[str] | None = None,
+    behaviors: Optional[List[str]] = None,
     mode: str = "onehot",
     default_label: str = "none",
     boundary_exclude: int = 0,
@@ -118,7 +119,7 @@ def merge_labels_into_ml_features_file(
     ann_csv: str,
     out_csv: str,
     *,
-    behaviors: list[str] | None = None,
+    behaviors: Optional[List[str]] = None,
     mode: str = "onehot",
     default_label: str = "none",
     boundary_exclude: int = 0,

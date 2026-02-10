@@ -7,7 +7,7 @@ def plot_turning_rate(turn_csv: str, out_dir: str) -> str:
     df = pd.read_csv(turn_csv)
 
     plt.figure(figsize=(7, 3))
-    plt.plot(df["frame"], df["turning_rate_deg_s"], color="purple", lw=1)
+    plt.plot(df["frame"].to_numpy(), df["turning_rate_deg_s"].to_numpy(), color="purple", lw=1)
     plt.axhline(0, color="black", lw=0.5)
 
     plt.title("Turning Rate (deg/s)")

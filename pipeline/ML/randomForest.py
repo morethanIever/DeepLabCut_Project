@@ -3,6 +3,7 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
+from typing import Optional, List
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix
@@ -12,7 +13,7 @@ from sklearn.utils.class_weight import compute_class_weight
 DEFAULT_BEHAVIORS = ["sniffing", "grooming", "rearing", "turning", "moving", "rest", "fast_moving", "other"]
 
 
-def _detect_label_format(df: pd.DataFrame, behaviors: list[str]):
+def _detect_label_format(df: pd.DataFrame, behaviors: List[str]):
     onehot_ok = all(b in df.columns for b in behaviors)
     if onehot_ok:
         onehot = df[behaviors].to_numpy()
@@ -58,12 +59,12 @@ def train_random_forest(
     merged_csv: str,
     out_dir: str,
     *,
-    behaviors: list[str] = None,
+    behaviors: Optional[List[str]] = None,
     val_ratio: float = 0.2,
     use_time_split: bool = True,
     use_train_mask: bool = True,     # ✅ boundary 제외 마스크 사용
     n_estimators: int = 600,
-    max_depth: int | None = None,
+    max_depth: Optional[int] = None,
     min_samples_leaf: int = 2,
     n_jobs: int = -1,
     random_state: int = 42,

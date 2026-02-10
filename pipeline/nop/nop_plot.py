@@ -20,7 +20,7 @@ def plot_nop(
 
     # trajectory (skip if nose is missing)
     if "nose_x" in df.columns and "nose_y" in df.columns:
-        plt.plot(df["nose_x"], df["nose_y"], alpha=0.3, linewidth=1)
+        plt.plot(df["nose_x"].values, df["nose_y"].values, alpha=0.3, linewidth=1)
 
     # objects
     plt.scatter(*object_left, s=2000, facecolors='none', edgecolors='r', label="Object A")

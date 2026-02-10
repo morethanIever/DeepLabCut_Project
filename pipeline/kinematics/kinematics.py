@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import pandas as pd
 import numpy as np
+from typing import Optional, Union, List
 from pipeline.cache_utils import ensure_dirs, cached_kin_path
 
 try:
@@ -40,7 +41,7 @@ def _load_alias_map() -> dict:
         return {}
 
 
-def _load_project_mapping(mapping_path: str | None) -> dict:
+def _load_project_mapping(mapping_path: Optional[str]) -> dict:
     """
     Load project-level mapping (json or yaml). Expected format:
     { "nose": "snout", "spine_upper": "spine1", ... }
@@ -63,7 +64,7 @@ def _load_project_mapping(mapping_path: str | None) -> dict:
     return {}
 
 
-def _resolve_part(bodyparts: list[str], aliases: list[str], preferred: str | list[str] | None) -> str | None:
+def _resolve_part(bodyparts: List[str], aliases: List[str], preferred: Optional[Union[str, List[str]]]) -> Optional[str]:
     """
     Resolve a bodypart name from available bodyparts.
     """
@@ -92,8 +93,8 @@ def compute_kinematics(
     *,
     force: bool = False,
     out_dir: str = "outputs",
-    cache_key: str | None = None,
-    mapping_path: str | None = None,
+    cache_key: Optional[str] = None,
+    mapping_path: Optional[str] = None,
 ) -> str:
     """
     Compute kinematics with caching.
@@ -118,7 +119,7 @@ def compute_kinematics(
     alias_map = _load_alias_map()
     project_map = _load_project_mapping(mapping_path)
 
-    def aliases(key: str) -> list[str]:
+    def aliases(key: str) -> List[str]:
         v = alias_map.get(key, [])
         return v if isinstance(v, list) else [v]
 
@@ -138,7 +139,7 @@ def compute_kinematics(
 
     logs.append(f"[KIN] Bodypart mapping: {resolved}")
 
-    def coord_or_nan(bp: str | None, coord: str) -> np.ndarray:
+    def coord_or_nan(bp: Optional[str], coord: str) -> np.ndarray:
         if (not bp) or (bp not in bodyparts):
             return np.full(n, np.nan)
         return get_xy(df, bp, coord)

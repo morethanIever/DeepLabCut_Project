@@ -1,10 +1,36 @@
 {
   "name": "Project 1",
   "dlc": {
-    "config_path": "C:\\Users\\leelab\\Desktop\\TestBehaviour-Eunhye-2025-12-29\\config.yaml"
+    "config_path": "C:\\Users\\leelab\\Desktop\\DLC_project\\DeepLabCut_Project\\projects\\Project 1\\assets\\config.yaml",
+    "reference": {
+      "video_size": [
+        1660,
+        1022
+      ],
+      "preprocess": {
+        "crop_roi": null,
+        "resize_to": null,
+        "clahe_clip": null
+      }
+    }
   },
   "settings": {
     "experiment_type": "NOP",
     "camera_view": "Top View"
+  },
+  "simba": {
+    "config_path": "C:\\Users\\leelab\\Desktop\\DLC_project\\DeepLabCut_Project\\projects\\Project 1\\assets\\simba_project_config.ini",
+    "labels": [
+      "sniffing_up",
+      "sniffing_down",
+      "grooming",
+      "rearing",
+      "turning",
+      "moving",
+      "rest",
+      "running",
+      "top",
+      "other"
+    ]
   }
 }

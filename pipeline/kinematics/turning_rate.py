@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+from typing import Optional
 from pipeline.cache_utils import ensure_dirs, cached_turn_path
 
 
@@ -13,7 +14,7 @@ def compute_turning_rate(
     fps: float = 30.0,
     smooth_window: int = 10,
     out_dir: str = "outputs",
-    cache_key: str | None = None,
+    cache_key: Optional[str] = None,
 ) -> str:
     """
     Compute turning rate (deg/sec) from spine trajectory.

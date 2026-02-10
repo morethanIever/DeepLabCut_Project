@@ -26,6 +26,7 @@ from pipeline.nop.nop_plot import plot_nop
 from pipeline.render_overlay import render_annotated_video
 
 from pipeline.ML.ml_features import extract_ml_features
+from pipeline.simba_backend import run_simba_pipeline
 #from pipeline.ML.umap_plot import save_umap_plot
 
 def _ensure_dir(p: str) -> str:
@@ -33,7 +34,10 @@ def _ensure_dir(p: str) -> str:
     return p
 
 
-def _copy_to_dir(src_path: str, dst_dir: str, *, dst_name: str | None = None) -> str:
+from typing import Optional
+
+
+def _copy_to_dir(src_path: str, dst_dir: str, *, dst_name: Optional[str] = None) -> str:
     _ensure_dir(dst_dir)
     name = dst_name or os.path.basename(src_path)
     dst_path = os.path.join(dst_dir, name)
@@ -53,9 +57,14 @@ def run_full_pipeline(
     out_dir: str,
     force_pose: bool = False,
     force_analysis: bool = False,
+    run_simba: bool = False,
+    simba_config_path: Optional[str] = None,
+    simba_options: Optional[dict] = None,
     roi=None,
     resize_to=None,
-    output_name: str | None = None,
+    output_name: Optional[str] = None,
+    dlc_log_callback=None,
+    render_pcutoff: float | None = None,
 ):
     """
     Full analysis pipeline with caching.
@@ -105,7 +114,8 @@ def run_full_pipeline(
         CONFIG_PATH=dlc_config_path,
         force=force_pose,
         out_dir=out_dir,
-        cache_key=cache_key
+        cache_key=cache_key,
+        log_callback=dlc_log_callback,
     )
     logs.append(f"[OK] Pose CSV: {pose_csv}")
 
@@ -184,7 +194,24 @@ def run_full_pipeline(
         object_right=(957, 130),
     )
     logs.append(f"[NOP] Validation plot saved: {nop_plot_path}")
-    
+
+    simba_results = {"simba_machine_csv": None, "simba_overlay_video": None}
+    if run_simba:
+        if not simba_config_path:
+            logs.append("[SimBA] Skipped: config path not set.")
+        else:
+            try:
+                simba_results = run_simba_pipeline(
+                    config_path=simba_config_path,
+                    pose_csv=pose_csv,
+                    input_video=input_video,
+                    logs=logs,
+                    out_dir=out_dir,
+                    **(simba_options or {}),
+                )
+            except Exception as e:
+                logs.append(f"[SimBA] Failed: {e}")
+
     # ----------------------------
     # 4) Render annotated video
     # ----------------------------
@@ -242,7 +269,8 @@ def run_full_pipeline(
         logs=logs,
         out_path=out_video, # Uses the path determined by cache_utils
         #label_map=current_map,
-        roi=None
+        roi=None,
+        pcutoff=render_pcutoff,
     )
 
 
@@ -274,5 +302,7 @@ def run_full_pipeline(
         "trajectory_turning_plot": trajectory_turning_plot,
         "nop_plot": nop_plot,
         "ml_features": ml_feat_csv,
+        "simba_machine_csv": simba_results.get("simba_machine_csv"),
+        "simba_overlay_video": simba_results.get("simba_overlay_video"),
         #"umap_plot": umap_path
     }

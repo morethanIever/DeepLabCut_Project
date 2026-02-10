@@ -10,14 +10,19 @@ from pipeline.ROI.canvasToROI import canvas_objects_to_rois
 from pipeline.ROI.ROItoCanvas import rois_to_canvas_json
 
 def render_roi_editor():
+    def _rerun():
+        if hasattr(st, "rerun"):
+            st.rerun()
+        else:
+            st.experimental_rerun()
     st.title("🎯 ROI Editor")
-    st.write("ROI를 그린 뒤 **Save & Back**을 누르면 메인 화면에서 분석할 수 있어요.")
+    st.write("ROI를 그린 뒤 **Save & Back**을 누르면 메인 화면에서 분석할 수 있습니다.")
 
     if st.session_state.input_video_path is None:
         st.error("먼저 비디오를 업로드하세요.")
         if st.button("⬅ Back"):
             st.session_state.page = "main"
-            st.rerun()
+            _rerun()
         return
 
     # canvas reset key
@@ -61,7 +66,7 @@ def render_roi_editor():
     objs = canvas_result.json_data.get("objects", []) if canvas_result.json_data else []
     current_rois = canvas_objects_to_rois(objs)
 
-    st.divider()
+    st.write("---")
     st.subheader("🧾 ROI List (select to delete)")
     if not current_rois:
         st.info("아직 ROI가 없습니다. 캔버스에서 ROI를 그려주세요.")
@@ -91,23 +96,23 @@ def render_roi_editor():
                 st.session_state.roi_list = kept
                 st.session_state.roi_delete_ids = set()   # ✅ 삭제 후 선택 초기화
                 st.session_state.roi_canvas_rev += 1
-                st.rerun()
+                _rerun()
 
 
         with c2:
             if st.button("🧹 Clear All ROIs"):
                 st.session_state.roi_list = []
                 st.session_state.roi_canvas_rev += 1
-                st.rerun()
+                _rerun()
 
         with c3:
             if st.button("💾 Save & Back"):
                 # Save exactly what is currently on canvas (after deletes)
                 st.session_state.roi_list = current_rois
                 st.session_state.page = "main"
-                st.rerun()
+                _rerun()
 
         with c4:
             if st.button("⬅ Cancel"):
                 st.session_state.page = "main"
-                st.rerun()
+                _rerun()

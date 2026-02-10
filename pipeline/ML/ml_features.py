@@ -2,6 +2,7 @@
 import os
 import pandas as pd
 import numpy as np
+from typing import Optional, List
 
 from pipeline.cache_utils import ensure_dirs, cached_ml_features
 
@@ -13,12 +14,12 @@ def extract_ml_features(
     force: bool = False,
     smooth_window: int = 15,
     std_window: int = 15,
-    lags: list[int] = None,
+    lags: Optional[List[int]] = None,
     include_acceleration: bool = False,
-    fps: float | None = None,          # if provided, scale coord velocities to px/s
+    fps: Optional[float] = None,          # if provided, scale coord velocities to px/s
     include_coord_features: bool = True,
     out_dir: str = "outputs",
-    cache_key: str | None = None,
+    cache_key: Optional[str] = None,
 ) -> str:
     """
     RandomForest-friendly ML features.
