@@ -1150,6 +1150,7 @@ def render_behavior_annotator_page(video_path: str, *, page_mode: str = "labelin
             key="rf_out_dir_input"
         )
 
+        v_stem = os.path.splitext(os.path.basename(video_path))[0]
         boundary_exclude = st.number_input("Boundary exclude frames", 0, 30, 5, step=1, key="boundary_exclude_init")
 
         cA, cB = st.columns(2)
@@ -1180,7 +1181,7 @@ def render_behavior_annotator_page(video_path: str, *, page_mode: str = "labelin
                     )
 
                     _ensure_dir(st.session_state.rf_out_dir)
-                    merged_path = os.path.join(st.session_state.rf_out_dir, "train_merged.csv")
+                    merged_path = os.path.join(st.session_state.rf_out_dir, f"train_merged_{v_stem}.csv")
                     merged_df.to_csv(merged_path, index=False)
                     st.session_state.merged_csv_path = merged_path
 
@@ -1208,7 +1209,7 @@ def render_behavior_annotator_page(video_path: str, *, page_mode: str = "labelin
     if show_outlier_retrain:
         st.markdown("---")
         st.subheader("2) Outlier Relabel & Retrain")
-        st.write("Relabeled annotations are merged into train_merged.csv, then retrained.")
+        st.write("Relabeled annotations are merged into a per-video train_merged_<video>.csv, then retrained.")
 
         v_stem = os.path.splitext(os.path.basename(video_path))[0]
         default_relabel = os.path.join(
@@ -1229,8 +1230,8 @@ def render_behavior_annotator_page(video_path: str, *, page_mode: str = "labelin
         )
 
         merged_csv_input = st.text_input(
-            "Merged CSV path (train_merged.csv)",
-            value=os.path.join(st.session_state.rf_out_dir, "train_merged.csv"),
+            "Merged CSV path (train_merged_<video>.csv)",
+            value=os.path.join(st.session_state.rf_out_dir, f"train_merged_{v_stem}.csv"),
             key="merged_csv_path_input",
         )
 
@@ -1240,13 +1241,13 @@ def render_behavior_annotator_page(video_path: str, *, page_mode: str = "labelin
 
         with c1:
             if st.button("🧩 Apply Outlier Relabel (overwrite merged)", type="primary"):
-                base_csv = os.path.join(st.session_state.rf_out_dir, "train_merged.csv")
+                base_csv = os.path.join(st.session_state.rf_out_dir, f"train_merged_{v_stem}.csv")
                 if not os.path.exists(base_csv):
                     st.error("No merged_csv found. Initial Train 탭에서 Merge 먼저 해주세요.")
                 elif not relabel_csv or (not os.path.exists(relabel_csv)):
                     st.error("Outlier relabel CSV path is invalid.")
                 else:
-                    updated_csv = os.path.join(st.session_state.rf_out_dir, "train_merged_updated.csv")
+                    updated_csv = os.path.join(st.session_state.rf_out_dir, f"train_merged_{v_stem}_updated.csv")
 
                     overwrite_labels_inplace(
                         base_csv=base_csv,
