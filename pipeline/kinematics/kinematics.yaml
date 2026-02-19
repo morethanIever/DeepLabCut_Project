@@ -1,0 +1,15 @@
+kinematics:
+  fps: 30.0
+  smooth_window: 5
+
+  parts:
+    nose: [nose, Nose, snout, "NoseTip"]
+    left_ear: [leftEar, left_ear, LEar, earL]
+    right_ear: [rightEar, right_ear, REar, earR]
+    spine_upper: [spineUpper, spine_upper, SpineU, back1]
+    spine_lower: [spineLower, spine_lower, SpineL, back2]
+    left_shoulder: [leftShoulder, left_shoulder, LShoulder]
+    right_shoulder: [rightShoulder, right_shoulder, RShoulder]
+    left_leg: [leftLeg, left_leg, LLeg]
+    right_leg: [rightLeg, right_Leg, RLeg]
+    tail_base: [tailBase, tail_base, TailBase]

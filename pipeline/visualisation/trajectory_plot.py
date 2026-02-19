@@ -4,7 +4,7 @@ import numpy as np
 import os
 
 
-def plot_trajectory(kin_csv: str) -> str:
+def plot_trajectory(kin_csv: str, out_dir: str) -> str:
     df = pd.read_csv(kin_csv)
 
     x = df["spine_x"].to_numpy()
@@ -52,8 +52,9 @@ def plot_trajectory(kin_csv: str) -> str:
     # ----------------------------
     # Save
     # ----------------------------
-    os.makedirs("outputs/plots", exist_ok=True)
-    out_path = "outputs/plots/trajectory_speed.png"
+    os.makedirs(out_dir, exist_ok=True)
+    video_stem = os.path.splitext(os.path.basename(kin_csv))[0]
+    out_path = os.path.join(out_dir, f"{video_stem}_trajectory_speed.png")
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 

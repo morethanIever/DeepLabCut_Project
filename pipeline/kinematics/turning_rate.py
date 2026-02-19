@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+from typing import Optional
 from pipeline.cache_utils import ensure_dirs, cached_turn_path
 
 
@@ -12,12 +13,14 @@ def compute_turning_rate(
     force: bool = False,
     fps: float = 30.0,
     smooth_window: int = 10,
+    out_dir: str = "outputs",
+    cache_key: Optional[str] = None,
 ) -> str:
     """
     Compute turning rate (deg/sec) from spine trajectory.
     """
-    ensure_dirs()
-    out_path = cached_turn_path(video_path)
+    ensure_dirs(out_dir)
+    out_path = cached_turn_path(video_path, out_dir, cache_key)
 
     if (not force) and os.path.exists(out_path):
         logs.append(f"[TURN] Using cached turning rate: {out_path}")

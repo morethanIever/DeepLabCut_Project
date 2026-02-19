@@ -2,6 +2,7 @@
 import os
 import numpy as np
 import pandas as pd
+from typing import Optional
 from pipeline.cache_utils import ensure_dirs, cached_beh_path
 
 
@@ -34,12 +35,14 @@ def classify_behavior(
     logs: list,
     *,
     force: bool = False,
+    out_dir: str = "outputs",
+    cache_key: Optional[str] = None,
 ) -> str:
     """
     Rule-based behavior classification (biologically realistic, top-view).
     """
-    ensure_dirs()
-    beh_cache = cached_beh_path(video_path)
+    ensure_dirs(out_dir)
+    beh_cache = cached_beh_path(video_path, out_dir, cache_key)
 
     # ---------------- Cache ----------------
     if (not force) and os.path.exists(beh_cache):
@@ -51,42 +54,66 @@ def classify_behavior(
     df = pd.read_csv(kin_csv)
     n = len(df)
 
+    # If required kinematics are missing, skip behavior classification.
+    required_cols = ["spine_x", "spine_y", "speed_px_s"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        logs.append(f"[BEH] Skipped behavior: missing columns {missing}")
+        frames = df["frame"] if "frame" in df.columns else pd.Series(np.arange(n), name="frame")
+        out = pd.DataFrame({
+            "frame": frames,
+            "behavior": ["unknown"] * n,
+            "confidence": [0.0] * n,
+        })
+        out.to_csv(beh_cache, index=False)
+        logs.append(f"[BEH] Placeholder behavior saved at {beh_cache}")
+        return beh_cache
     # -------------------------------------------------
-    # Pre-computed quantities
+    # Pre-computed quantities (robust to missing columns)
     # -------------------------------------------------
-
-    speed = df["speed_px_s"].to_numpy()
-    turn_rate = df["turning_rate_deg"].to_numpy()
-
-    # Spine geometry
-    spine_len = np.hypot(
-        df["spine_x"] - df["spine_lower_x"],
-        df["spine_y"] - df["spine_lower_y"],
-    )
-
-    spine_mean = spine_len.mean()
-    spine_std = spine_len.std() 
-
-    # Tail movement (proxy for vertical posture)
-    tail_dx = np.diff(df["tailbase_x"], prepend=df["tailbase_x"].iloc[0])
-    tail_dy = np.diff(df["tailbase_y"], prepend=df["tailbase_y"].iloc[0])
-    tail_speed = np.sqrt(tail_dx**2 + tail_dy**2)
-
-    # Head–spine angle (grooming / turning cue)
-    head_vec_x = df["nose_x"] - df["spine_x"]
-    head_vec_y = df["nose_y"] - df["spine_y"]
-    spine_vec_x = df["spine_x"] - df["spine_lower_x"]
-    spine_vec_y = df["spine_y"] - df["spine_lower_y"]
-
-    dot = head_vec_x * spine_vec_x + head_vec_y * spine_vec_y
-    mag = (
-        np.sqrt(head_vec_x**2 + head_vec_y**2)
-        * np.sqrt(spine_vec_x**2 + spine_vec_y**2)
-        + 1e-6
-    )
-    head_spine_angle = np.degrees(np.arccos(np.clip(dot / mag, -1, 1)))
-
-    # -------------------------------------------------
+    
+    speed = df["speed_px_s"].to_numpy() if "speed_px_s" in df.columns else np.zeros(n)
+    turn_rate = df["turning_rate_deg"].to_numpy() if "turning_rate_deg" in df.columns else np.zeros(n)
+    
+    has_spine_lower = "spine_lower_x" in df.columns and "spine_lower_y" in df.columns
+    has_tail = "tailbase_x" in df.columns and "tailbase_y" in df.columns
+    has_nose = "nose_x" in df.columns and "nose_y" in df.columns
+    
+    if has_spine_lower:
+        spine_len = np.hypot(
+            df["spine_x"] - df["spine_lower_x"],
+            df["spine_y"] - df["spine_lower_y"],
+        )
+        spine_mean = spine_len.mean()
+        spine_std = spine_len.std()
+    else:
+        spine_len = None
+        spine_mean = 0.0
+        spine_std = 1.0
+    
+    if has_tail:
+        tail_dx = np.diff(df["tailbase_x"], prepend=df["tailbase_x"].iloc[0])
+        tail_dy = np.diff(df["tailbase_y"], prepend=df["tailbase_y"].iloc[0])
+        tail_speed = np.sqrt(tail_dx**2 + tail_dy**2)
+    else:
+        tail_speed = None
+    
+    if has_nose and has_spine_lower:
+        head_vec_x = df["nose_x"] - df["spine_x"]
+        head_vec_y = df["nose_y"] - df["spine_y"]
+        spine_vec_x = df["spine_x"] - df["spine_lower_x"]
+        spine_vec_y = df["spine_y"] - df["spine_lower_y"]
+    
+        dot = head_vec_x * spine_vec_x + head_vec_y * spine_vec_y
+        mag = (
+            np.sqrt(head_vec_x**2 + head_vec_y**2)
+            * np.sqrt(spine_vec_x**2 + spine_vec_y**2)
+            + 1e-6
+        )
+        head_spine_angle = np.degrees(np.arccos(np.clip(dot / mag, -1, 1)))
+    else:
+        head_spine_angle = None
+    
     # 1️⃣ Base behavior (dominant)
     # -------------------------------------------------
     # -------------------------------------------------
@@ -105,12 +132,15 @@ def classify_behavior(
     dy = np.diff(df["spine_y"], prepend=df["spine_y"].iloc[0])
     disp = np.sqrt(dx**2 + dy**2)
 
-    turn_angle = (
-        df["move_turn_angle_deg"]
-        .rolling(window=5, center=True)
-        .mean()
-        .fillna(0)
-    )
+    if "move_turn_angle_deg" in df.columns:
+        turn_angle = (
+            df["move_turn_angle_deg"]
+            .rolling(window=5, center=True)
+            .mean()
+            .fillna(0)
+        )
+    else:
+        turn_angle = pd.Series(np.zeros(n))
 
     turn_integral = (
         turn_angle
@@ -134,30 +164,32 @@ def classify_behavior(
     # -------------------------------------------------
     # REARING (top-view friendly)
     # -------------------------------------------------
-    rearing_candidate = (
-        (tail_speed < np.percentile(tail_speed, 30)) &   # 꼬리 거의 안 움직임
-        (spine_len < spine_mean + 0.9* spine_std)        # 상대적 신장
-    )
-
-    rearing = enforce_min_duration(rearing_candidate, min_len=15)
-    behavior[rearing] = "rearing"
-    confidence[rearing] = 0.01 + 0.99 * np.clip(
-        (spine_mean - spine_len[rearing]) / spine_std, 0, 1
-    )
+    if tail_speed is not None and spine_len is not None:
+        rearing_candidate = (
+            (tail_speed < np.percentile(tail_speed, 30)) &
+            (spine_len < spine_mean + 0.9 * spine_std)
+        )
+    
+        rearing = enforce_min_duration(rearing_candidate, min_len=15)
+        behavior[rearing] = "rearing"
+        confidence[rearing] = 0.01 + 0.99 * np.clip(
+            (spine_mean - spine_len[rearing]) / spine_std, 0, 1
+        )
     # -------------------------------------------------
     # GROOMING
     # -------------------------------------------------
-    grooming_candidate = (
-        (speed < 10)
-        & (head_spine_angle > 65)
-        & (spine_len < spine_mean)
-    )
+    if head_spine_angle is not None and spine_len is not None:
+        grooming_candidate = (
+            (speed < 10)
+            & (head_spine_angle > 65)
+            & (spine_len < spine_mean)
+        )
 
-    grooming = enforce_min_duration(grooming_candidate, min_len=15)
-    behavior[grooming] = "grooming"
-    confidence[grooming] = 0.01 + 0.99 * np.clip(
-        (head_spine_angle[grooming] - 65) / 30, 0, 1
-    )
+        grooming = enforce_min_duration(grooming_candidate, min_len=15)
+        behavior[grooming] = "grooming"
+        confidence[grooming] = 0.01 + 0.99 * np.clip(
+            (head_spine_angle[grooming] - 65) / 30, 0, 1
+        )
     
     # -------------------------------------------------
     # FAST MOVE (맨 마지막)
