@@ -6,3 +6,6 @@ __pychache__/
 assets/
 *.json
 .streamlit
+.png
+.mp4
+projects/

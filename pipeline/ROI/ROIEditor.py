@@ -15,6 +15,36 @@ def render_roi_editor():
             st.rerun()
         else:
             st.experimental_rerun()
+    def _geo_key(r):
+        t = r.get("type")
+        if t == "circle":
+            cx = round(float(r.get("cx", 0.0)), 1)
+            cy = round(float(r.get("cy", 0.0)), 1)
+            rad = round(float(r.get("radius", 0.0)), 1)
+            return ("circle", cx, cy, rad)
+        if t == "rect":
+            left = round(float(r.get("left", 0.0)), 1)
+            top = round(float(r.get("top", 0.0)), 1)
+            w = round(float(r.get("w", 0.0)), 1)
+            h = round(float(r.get("h", 0.0)), 1)
+            return ("rect", left, top, w, h)
+        return (t,)
+
+    def _dedupe_rois(rois):
+        seen = set()
+        out = []
+        for r in rois:
+            t = r.get("type")
+            if t == "circle" and float(r.get("radius", 0.0)) <= 5.0:
+                continue
+            if t == "rect" and (float(r.get("w", 0.0)) <= 5.0 or float(r.get("h", 0.0)) <= 5.0):
+                continue
+            key = _geo_key(r)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(r)
+        return out
     st.title("🎯 ROI Editor")
     st.write("ROI를 그린 뒤 **Save & Back**을 누르면 메인 화면에서 분석할 수 있습니다.")
 
@@ -28,6 +58,8 @@ def render_roi_editor():
     # canvas reset key
     if "roi_canvas_rev" not in st.session_state:
         st.session_state.roi_canvas_rev = 0
+    if "roi_canvas_seeded_rev" not in st.session_state:
+        st.session_state.roi_canvas_seeded_rev = -1
 
     # selection state
     if "roi_delete_ids" not in st.session_state:
@@ -49,6 +81,10 @@ def render_roi_editor():
 
     # canvas
     canvas_key = f"roi_canvas_{st.session_state.roi_canvas_rev}"
+    seed_drawing = None
+    if st.session_state.roi_canvas_seeded_rev != st.session_state.roi_canvas_rev:
+        seed_drawing = rois_to_canvas_json(_dedupe_rois(st.session_state.roi_list))
+
     canvas_result = st_canvas(
         background_image=bg,
         drawing_mode=draw_mode,
@@ -59,12 +95,14 @@ def render_roi_editor():
         height=bg.height,
         width=bg.width,
         key=canvas_key,
-        initial_drawing=rois_to_canvas_json(st.session_state.roi_list),
+        initial_drawing=seed_drawing,
     )
+    if seed_drawing is not None:
+        st.session_state.roi_canvas_seeded_rev = st.session_state.roi_canvas_rev
 
     # current ROIs computed from canvas
     objs = canvas_result.json_data.get("objects", []) if canvas_result.json_data else []
-    current_rois = canvas_objects_to_rois(objs)
+    current_rois = _dedupe_rois(canvas_objects_to_rois(objs))
 
     st.write("---")
     st.subheader("🧾 ROI List (select to delete)")
@@ -93,7 +131,7 @@ def render_roi_editor():
         with c1:
             if st.button("🗑 Delete Selected"):
                 kept = [r for r in current_rois if r["id"] not in st.session_state.roi_delete_ids]
-                st.session_state.roi_list = kept
+                st.session_state.roi_list = _dedupe_rois(kept)
                 st.session_state.roi_delete_ids = set()   # ✅ 삭제 후 선택 초기화
                 st.session_state.roi_canvas_rev += 1
                 _rerun()
@@ -108,7 +146,7 @@ def render_roi_editor():
         with c3:
             if st.button("💾 Save & Back"):
                 # Save exactly what is currently on canvas (after deletes)
-                st.session_state.roi_list = current_rois
+                st.session_state.roi_list = _dedupe_rois(current_rois)
                 st.session_state.page = "main"
                 _rerun()
 

@@ -17,6 +17,11 @@ def _rerun():
     else:
         st.experimental_rerun()
 
+def _clear_simba_cfg_editor_state():
+    for k in list(st.session_state.keys()):
+        if str(k).startswith("simba_cfg_"):
+            st.session_state.pop(k, None)
+
 def render_project_setup_page():
     with st.container(border=True):
         st.title("Project & Config Setup")
@@ -99,12 +104,14 @@ def render_project_setup_page():
                 with col_a:
                     if st.button("Create SimBA Config Template", type="primary"):
                         create_simba_config_template(PROJECTS_ROOT, st.session_state.active_project)
+                        _clear_simba_cfg_editor_state()
                         _rerun()
                 with col_b:
                     if st.button("Auto-fill SimBA Config", type="primary"):
                         try:
                             autofill_simba_config(PROJECTS_ROOT, st.session_state.active_project)
                             st.success("Auto-filled SimBA config.")
+                            _clear_simba_cfg_editor_state()
                             _rerun()
                         except Exception as e:
                             st.error(f"Auto-fill failed: {e}")
@@ -114,6 +121,7 @@ def render_project_setup_page():
                             st.warning("Please enter a SimBA config path before clicking Update.")
                         else:
                             set_simba_config(PROJECTS_ROOT, st.session_state.active_project, new_cfg_path)
+                            _clear_simba_cfg_editor_state()
                             _rerun()
 
             cfg_path = cur_cfg if os.path.exists(cur_cfg) else None

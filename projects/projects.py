@@ -5,6 +5,7 @@ import shutil
 import configparser
 import glob
 import pandas as pd
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 try:
     import yaml
@@ -187,8 +188,8 @@ def autofill_simba_config(projects_root: str, project_name: str) -> str:
     proj_dir = _project_dir(projects_root, project_name)
     simba_root = os.path.join(proj_dir, "simba")
     project_folder = os.path.join(simba_root, "project_folder")
-    videos_dir = os.path.join(project_folder, "videos")
-    pose_dir = os.path.join(project_folder, "csv", "pose")
+    videos_dir = os.path.join(proj_dir, "outputs", "videos")
+    pose_dir = os.path.join(proj_dir, "outputs", "poses")
     model_dir = os.path.join(simba_root, "models")
     os.makedirs(videos_dir, exist_ok=True)
     os.makedirs(pose_dir, exist_ok=True)
@@ -250,6 +251,8 @@ def autofill_simba_config(projects_root: str, project_name: str) -> str:
     cfg["Project"]["project_name"] = project_name
     cfg["Project"]["project_path"] = os.path.abspath(project_folder)
     cfg["Videos"]["video_dir"] = os.path.abspath(videos_dir)
+    cfg["Videos"].setdefault("px_per_mm", "30.0")
+    cfg["Videos"].setdefault("fps", "30")
     cfg["Pose"]["pose_format"] = "DLC"
     cfg["Pose"]["pose_dir"] = os.path.abspath(pose_dir)
     cfg["Models"]["classifier_dir"] = os.path.abspath(model_dir)
@@ -331,43 +334,27 @@ def _save_profile(projects_root: str, project_name: str, prof: Dict[str, Any]) -
     with open(p, "w", encoding="utf-8") as f:
         json.dump(prof, f, ensure_ascii=False, indent=2)
 
-def _sync_assets_from_config_dir(projects_root: str, project_name: str, config_path: str) -> None:
-    proj_dir = _project_dir(projects_root, project_name)
-    assets_dir = os.path.join(proj_dir, "assets")
-    os.makedirs(assets_dir, exist_ok=True)
-
-    src_dir = os.path.abspath(os.path.dirname(config_path))
-    dst_dir = os.path.abspath(assets_dir)
-    if src_dir == dst_dir:
-        return
-
-    for name in os.listdir(src_dir):
-        src = os.path.join(src_dir, name)
-        dst = os.path.join(dst_dir, name)
-        if os.path.isdir(src):
-            if os.path.exists(dst):
-                try:
-                    shutil.rmtree(dst)
-                except Exception:
-                    pass
-            # Robust copy: skip files that disappear or are missing
-            os.makedirs(dst, exist_ok=True)
-            for root, dirs, files in os.walk(src):
-                rel = os.path.relpath(root, src)
-                target_root = dst if rel == "." else os.path.join(dst, rel)
-                os.makedirs(target_root, exist_ok=True)
-                for fn in files:
-                    s = os.path.join(root, fn)
-                    d = os.path.join(target_root, fn)
-                    try:
-                        shutil.copy2(s, d)
-                    except FileNotFoundError:
-                        continue
-        else:
-            try:
-                shutil.copy2(src, dst)
-            except FileNotFoundError:
-                continue
+def _resolve_real_dlc_config_path(config_path: str, *, assets_dir: Optional[str] = None) -> str:
+    """
+    If config.yaml references a project_path, prefer the config at that location.
+    Fall back to the given config_path when resolution fails.
+    """
+    try:
+        if not config_path or not os.path.exists(config_path) or yaml is None:
+            return config_path
+        cfg = yaml.safe_load(Path(config_path).read_text(encoding="utf-8")) or {}
+        proj_path = cfg.get("project_path")
+        if isinstance(proj_path, list) and proj_path:
+            proj_path = proj_path[0]
+        if isinstance(proj_path, str):
+            candidate = os.path.abspath(os.path.join(proj_path, "config.yaml"))
+            if os.path.exists(candidate):
+                if assets_dir and os.path.abspath(candidate).startswith(os.path.abspath(assets_dir) + os.sep):
+                    return config_path
+                return candidate
+    except Exception:
+        return config_path
+    return config_path
 
 def set_dlc_config(projects_root: str, project_name: str, config_path: str) -> str:
     if not config_path:
@@ -377,9 +364,15 @@ def set_dlc_config(projects_root: str, project_name: str, config_path: str) -> s
 
     prof = load_profile(projects_root, project_name)
     prof.setdefault("dlc", {})
-    prof["dlc"]["config_path"] = os.path.abspath(config_path)
+    assets_dir = os.path.join(_project_dir(projects_root, project_name), "assets")
+    real_path = _resolve_real_dlc_config_path(config_path, assets_dir=assets_dir)
+    if os.path.abspath(real_path).startswith(os.path.abspath(assets_dir) + os.sep):
+        raise ValueError(
+            "DLC config path points to the project assets folder. "
+            "Please provide the original DLC project config.yaml path instead."
+        )
+    prof["dlc"]["config_path"] = os.path.abspath(real_path)
     _save_profile(projects_root, project_name, prof)
-    _sync_assets_from_config_dir(projects_root, project_name, config_path)
     return prof["dlc"]["config_path"]
 
 def get_dlc_reference(projects_root: str, project_name: str) -> Dict[str, Any]:
@@ -430,10 +423,16 @@ def import_dlc_config_file(projects_root: str, project_name: str, uploaded_file)
     with open(dst, "wb") as f:
         f.write(data)
 
-    # profile update
+    # profile update: prefer real DLC project path if present in config.yaml
     prof = load_profile(projects_root, project_name)
     prof.setdefault("dlc", {})
-    prof["dlc"]["config_path"] = os.path.abspath(dst)
+    real_path = _resolve_real_dlc_config_path(dst, assets_dir=assets_dir)
+    if os.path.abspath(real_path).startswith(os.path.abspath(assets_dir) + os.sep):
+        raise ValueError(
+            "Uploaded DLC config.yaml resolves to the project assets folder. "
+            "Please use the Direct Path field to set the original DLC project config.yaml path."
+        )
+    prof["dlc"]["config_path"] = os.path.abspath(real_path)
     _save_profile(projects_root, project_name, prof)
 
     return prof["dlc"]["config_path"]

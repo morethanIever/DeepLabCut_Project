@@ -188,6 +188,13 @@ def compute_simba_shap(
             # binary classifiers => use positive class
             shap_vals = shap_values[1]
             exp_val = expected_value[1]
+        elif isinstance(shap_values, np.ndarray) and shap_values.ndim == 3:
+            # Some SHAP versions return (n_samples, n_features, n_classes)
+            shap_vals = shap_values[:, :, 1] if shap_values.shape[2] > 1 else shap_values[:, :, 0]
+            if isinstance(expected_value, (list, np.ndarray)) and len(expected_value) > 1:
+                exp_val = expected_value[1]
+            else:
+                exp_val = expected_value
         else:
             shap_vals = shap_values
             exp_val = expected_value

@@ -30,7 +30,7 @@ def canvas_objects_to_rois(objs):
             sx = float(o.get("scaleX", 1.0))
             sy = float(o.get("scaleY", 1.0))
 
-            # ✅ 실제 픽셀 반지름으로 환산 (보통 sx==sy)
+            # 실제 픽셀 반지름으로 환산 (보통 sx==sy)
             radius = r0 * (sx + sy) / 2.0
 
             cx = left + radius
@@ -41,7 +41,7 @@ def canvas_objects_to_rois(objs):
                 "type": "circle",
                 "cx": cx,
                 "cy": cy,
-                "radius": radius,  # ✅ 실제 반지름 저장
+                "radius": radius,  # 실제 반지름 저장
                 "name": o.get("roi_name", f"ROI_{rid}")
             })
 
@@ -54,7 +54,7 @@ def canvas_objects_to_rois(objs):
             sx = float(o.get("scaleX", 1.0))
             sy = float(o.get("scaleY", 1.0))
 
-            # ✅ 실제 픽셀 너비/높이로 환산
+            # 실제 픽셀 너비/높이로 환산
             w = w0 * sx
             h = h0 * sy
 

@@ -54,6 +54,12 @@ def _make_time_split(indices: np.ndarray, val_ratio: float):
     split = n - n_val
     return indices[:split], indices[split:]
 
+def _class_counts(y: np.ndarray, class_names: List[str]) -> dict:
+    counts = {}
+    for i, name in enumerate(class_names):
+        counts[name] = int((y == i).sum())
+    return counts
+
 
 def train_random_forest(
     merged_csv: str,
@@ -63,6 +69,8 @@ def train_random_forest(
     val_ratio: float = 0.2,
     use_time_split: bool = True,
     use_train_mask: bool = True,     # ✅ boundary 제외 마스크 사용
+    force_stratified_when_missing: bool = True,
+    stratify_random_split: bool = True,
     n_estimators: int = 600,
     max_depth: Optional[int] = None,
     min_samples_leaf: int = 2,
@@ -94,6 +102,9 @@ def train_random_forest(
     if len(df_m) < 50:
         raise RuntimeError(f"Too few labeled frames after masking: {len(df_m)}. Check your annotations/train_mask.")
 
+    counts_after_mask = _class_counts(y_m, class_names)
+    print("[RF] Label counts after mask:", counts_after_mask)
+
     # ---- features ----
     drop_cols = set(["frame"])
     drop_cols.update([b for b in behaviors if b in df_m.columns])
@@ -113,9 +124,30 @@ def train_random_forest(
     if use_time_split:
         tr_idx, va_idx = _make_time_split(idx, val_ratio)
     else:
-        tr_idx, va_idx = train_test_split(
-            idx, test_size=val_ratio, random_state=random_state, stratify=y_m
-        )
+        if stratify_random_split:
+            tr_idx, va_idx = train_test_split(
+                idx, test_size=val_ratio, random_state=random_state, stratify=y_m
+            )
+        else:
+            tr_idx, va_idx = train_test_split(
+                idx, test_size=val_ratio, random_state=random_state, stratify=None
+            )
+
+    if use_time_split and force_stratified_when_missing:
+        val_counts = _class_counts(y_m[va_idx], class_names)
+        missing_in_val = [k for k, v in val_counts.items() if v == 0 and counts_after_mask.get(k, 0) > 0]
+        if missing_in_val:
+            print("[RF][WARN] Time split left some classes out of validation:", missing_in_val)
+            try:
+                tr_idx, va_idx = train_test_split(
+                    idx, test_size=val_ratio, random_state=random_state, stratify=y_m
+                )
+                print("[RF][INFO] Switched to stratified random split to include all classes in validation.")
+            except Exception as e:
+                print("[RF][WARN] Stratified split failed; using random split without stratify. Error:", e)
+                tr_idx, va_idx = train_test_split(
+                    idx, test_size=val_ratio, random_state=random_state, stratify=None
+                )
 
     X_train, y_train = X.iloc[tr_idx], y_m[tr_idx]
     X_val, y_val = X.iloc[va_idx], y_m[va_idx]
@@ -193,6 +225,8 @@ if __name__ == "__main__":
     p.add_argument("--time_split", action="store_true")
     p.add_argument("--random_split", action="store_true")
     p.add_argument("--no_train_mask", action="store_true", help="ignore train_mask column if present")
+    p.add_argument("--no_force_stratified", action="store_true", help="do not fallback to stratified random split when time split misses classes")
+    p.add_argument("--no_stratify_random_split", action="store_true", help="disable stratify for random split")
     p.add_argument("--n_estimators", type=int, default=600)
     p.add_argument("--max_depth", type=int, default=0, help="0 means None")
     p.add_argument("--min_leaf", type=int, default=2)
@@ -212,6 +246,8 @@ if __name__ == "__main__":
         val_ratio=args.val_ratio,
         use_time_split=use_time,
         use_train_mask=not args.no_train_mask,
+        force_stratified_when_missing=not args.no_force_stratified,
+        stratify_random_split=not args.no_stratify_random_split,
         n_estimators=args.n_estimators,
         max_depth=md,
         min_samples_leaf=args.min_leaf,
